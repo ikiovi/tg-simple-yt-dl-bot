@@ -4,19 +4,16 @@ export const youtubeUrlRegex = /https?:\/\/(w{3}\.)?youtu(\.)?be(\.com)?\/(watch
 
 export async function getYoutubeVideoInfo(ytUrl: string) : Promise<YoutubeVideoInfo> {
     const { videoDetails, formats } = await ytdl.getInfo(ytUrl);
-    const { videoId, title, video_url, ownerChannelName, thumbnails } = videoDetails;
-    const thumbnail_url = thumbnails.pop()?.url ?? '';
+    const { thumbnails } = videoDetails;
     const { url } = ytdl.chooseFormat(formats, {
+        quality: 'highest',
         filter: "videoandaudio",
-        quality: 'highest'
     });
+
     return {
-        videoId,
-        title,
-        video_url,
-        full_video_url: url,
-        ownerChannelName,
-        thumbnail: thumbnail_url,
+        ... videoDetails,
+        video_full_url: url,
+        thumb_url: thumbnails.pop()?.url ?? '',
     }
 }
 
@@ -26,7 +23,6 @@ export type YoutubeVideoInfo = {
     title: string
     video_url: string
     ownerChannelName: string
-    thumbnail: string
-    full_video_url: string
-    [key: string]: unknown
+    thumb_url: string
+    video_full_url: string
 }

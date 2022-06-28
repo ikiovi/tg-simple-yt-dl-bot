@@ -20,7 +20,7 @@ bot.on('inline_query', async (ctx) => {
     if (!youtubeUrlRegex.test(query)) return;
 
     const response: InlineQueryResult[] = [];
-    let cache: boolean = false;
+    let cache = false;
 
     try {
         const { title, videoId: id, ownerChannelName, video_url, video_full_url, thumb_url } = await getYoutubeVideoInfo(query);
@@ -29,30 +29,42 @@ bot.on('inline_query', async (ctx) => {
             [Markup.button.url('Download video', video_full_url)]
         ]);
 
+        const vItem = {
+            thumb_url,
+            
+            type: 'video',
+            mime_type: 'video/mp4',
+            
+            video_url: video_full_url
+        } as const;
+
         response.push({
             id,
             title,
-            thumb_url,
-            reply_markup,
-
-            type: 'video',
-            mime_type: 'video/mp4',
-
-            video_url: video_full_url,
             description: ownerChannelName,
+            reply_markup,
             caption: `${title}\n${ownerChannelName}`,
+            ...vItem,
         });
+
+        response.push({
+            id: id + '_nocaption',
+            title: 'Without caption',
+            ...vItem,
+        });
+        
         cache = true;
     }
     catch (err) {
-        const { message } = (<Error>err);
+        const { name, message } = (<Error>err);
         response.push({
             id: 'error',
             title: 'Error',
             type: 'article',
             description: message,
             input_message_content: {
-                message_text: message
+                message_text: `${name}: <code>${message}</code>`,
+                parse_mode: 'HTML'
             }
         });
     }

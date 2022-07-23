@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Markup, Telegraf } from "telegraf";
-import { youtubeUrlRegex, getYoutubeVideoInfo } from './utils';
 import { InlineQueryResult } from 'telegraf/typings/core/types/typegram';
+import { youtubeUrlRegex, getYoutubeVideoInfo, bytesToHumanSize, sizeLimitBytes } from './utils';
 
 const token = process.env.TOKEN;
 if (!token) throw new Error('TOKEN must be provided!')
@@ -19,40 +19,48 @@ bot.on('inline_query', async (ctx) => {
     const { query } = ctx.inlineQuery;
     if (!youtubeUrlRegex.test(query)) return;
 
-    const response: InlineQueryResult[] = [];
+    let response: InlineQueryResult[] = [];
     let cache = false;
 
     try {
-        const { title, videoId: id, ownerChannelName, video_url, video_full_url, thumb_url } = await getYoutubeVideoInfo(query);
+        const { title, videoId: id, ownerChannelName, video_url, video_full_url, thumb_url, contentLength } = await getYoutubeVideoInfo(query);
         const { reply_markup } = Markup.inlineKeyboard([
             [Markup.button.url('View on Youtube', video_url)],
-            [Markup.button.url('Download video', video_full_url)]
         ]);
+
+        const size = bytesToHumanSize(contentLength);
+        const isValidSize = contentLength < sizeLimitBytes;
+        const invalidSizeMessage = [`The video size [${size}] is too large.`, 'Due to Telegram API limits, this will most likely cause an error.'];
 
         const vItem = {
             thumb_url,
-            
+
             type: 'video',
             mime_type: 'video/mp4',
-            
+
             video_url: video_full_url
         } as const;
 
         response.push({
             id,
-            title,
-            description: ownerChannelName,
             reply_markup,
+            
             caption: `${title}\n${ownerChannelName}`,
+            title: isValidSize ? title : invalidSizeMessage[0],
+            description: isValidSize ? `${ownerChannelName}\n${size}` : invalidSizeMessage[1],
+            
             ...vItem,
         });
 
-        response.push({
-            id: id + '_nocaption',
-            title: 'Without caption',
-            ...vItem,
-        });
-        
+        if(isValidSize){
+            response.push({ 
+                id: id + '_nocaption', 
+                title: 'Without caption', 
+
+                ...vItem, 
+            });
+        }
+
         cache = true;
     }
     catch (err) {
@@ -62,8 +70,9 @@ bot.on('inline_query', async (ctx) => {
             title: 'Error',
             type: 'article',
             description: message,
+
             input_message_content: {
-                message_text: `${name}: <code>${message}</code>`,
+                message_text: `${name}: <pre>${message}</pre>`,
                 parse_mode: 'HTML'
             }
         });

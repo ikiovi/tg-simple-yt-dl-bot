@@ -12,13 +12,6 @@ const bot = new Telegraf(token);
 const getUpdateTime = () => new Date(Date.now() + process.env.CHECKUPDATESH * 60 * 60 * 1000);
 let update_on = getUpdateTime();
 
-bot.catch(err => {
-    const date = new Date();
-    const dateString = `\x1b[41m[${date.toLocaleDateString()} ${date.toLocaleTimeString()}]\x1b[0m`;
-    const { message, name } = <Error>err;
-    console.error(dateString, `${name}: ${message}`);
-});
-
 bot.use((_, next) => {
     if (new Date() >= update_on) {
         checkForUpdates();
@@ -44,7 +37,8 @@ bot.on('inline_query', async (ctx) => {
 
         const size = bytesToHumanSize(contentLength);
         const isValidSize = contentLength < sizeLimitBytes;
-        const invalidSizeMessage = [`The video size [${size}] is too large.`, 'Due to Telegram API limits, this will most likely cause an error.'];
+        const invalidSizeMessage = [`The video size [${size}] is too large.`,
+            'Due to Telegram API limits, this will most likely cause an error.'];
 
         const videoItem = {
             thumb_url,
@@ -100,6 +94,12 @@ bot.on('inline_query', async (ctx) => {
     return await ctx.answerInlineQuery(response, cache ? undefined : { cache_time: 0 });
 });
 
+bot.catch(err => {
+    const date = new Date();
+    const dateString = `\x1b[41m[${date.toLocaleDateString()} ${date.toLocaleTimeString()}]\x1b[0m`;
+    const { message, name } = <Error>err;
+    console.error(dateString, `${name}: ${message}`);
+});
 
 bot.launch();
 

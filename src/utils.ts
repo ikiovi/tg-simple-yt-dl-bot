@@ -14,7 +14,7 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeVideoInfo> {
     });
 
     const { headers } = await fetch(url, { method: 'HEAD' });
-    const contentLength = parseInt(headers.get('content-length') ?? '0');
+    const contentLength = +(headers.get('content-length') ?? '');
 
     return {
         contentLength,
@@ -27,7 +27,7 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeVideoInfo> {
 function bytesToHumanSize(bytes: number): string {
     const units = ' KMGTPEZYXWVU';
     if (bytes <= 0) return '0';
-    const t2 = Math.min( Math.floor(Math.log(bytes) / Math.log(1024)), 12);
+    const t2 = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 12);
     return (Math.round(bytes * 100 / Math.pow(1024, t2)) / 100) + units.charAt(t2).replace(' ', '') + 'B';
 }
 

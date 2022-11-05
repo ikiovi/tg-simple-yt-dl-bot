@@ -12,7 +12,7 @@ function startBot(){
     bot_process.stderr?.on('data', console.error);
 
     bot_process.once('exit', () => {
-        console.log('Child exited');
+        // console.log('Child exited');
         shouldUpdate(updateYtdl);
     });
 }

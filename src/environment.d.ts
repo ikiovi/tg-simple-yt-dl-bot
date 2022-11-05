@@ -2,7 +2,9 @@ declare global {
     namespace NodeJS {
         interface ProcessEnv {
             TOKEN: string;
-            CHECKUPDATESH:number;
+            CHECKUPDATESH: number;
+            RL_MINTIME_MS: number;
+            RL_MAXQUEUE: number;
         }
     }
 }

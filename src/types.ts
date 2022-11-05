@@ -1,3 +1,10 @@
+import Bottleneck from 'bottleneck';
+import { Context } from 'telegraf';
+
+export type MyContext = Context & {
+    limiter: Bottleneck
+}
+
 export type YoutubeVideoInfo = {
     title: string
     videoId: string

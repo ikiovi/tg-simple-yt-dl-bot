@@ -1,8 +1,9 @@
 import Bottleneck from 'bottleneck';
-import { Context } from 'telegraf';
+import { Context } from 'grammy';
 
 export type MyContext = Context & {
-    limiter: Bottleneck
+    limiter: Bottleneck,
+    getYoutubeVideoInfo: (url: string) => Promise<YoutubeVideoInfo>
 }
 
 export type YoutubeVideoInfo = {

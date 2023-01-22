@@ -1,5 +1,5 @@
 import ytdl from 'ytdl-core';
-import { YoutubeVideoInfo } from './types';
+import { YoutubeVideoInfo } from '../types';
 
 const sizeLimitMB = 20;
 const sizeLimitBytes = sizeLimitMB * (1024 ** 2);
@@ -24,12 +24,4 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeVideoInfo> {
     };
 }
 
-function bytesToHumanSize(bytes: number): string {
-    const units = ' KMGTPEZYXWVU';
-    if (bytes <= 0) return '0';
-    const t2 = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 12);
-    return (Math.round(bytes * 100 / Math.pow(1024, t2)) / 100) + units.charAt(t2).replace(' ', '') + 'B';
-}
-
-
-export { bytesToHumanSize, getYoutubeVideoInfo, youtubeUrlRegex, sizeLimitBytes };
+export { getYoutubeVideoInfo, youtubeUrlRegex, sizeLimitBytes };

@@ -1,29 +1,15 @@
-import { ChildProcess, exec } from 'child_process';
-import { execute, packageName, shouldUpdate } from './exec';
+import { packageName } from './utils/package';
+import { checkForUpdate, createBot, updatePackage } from './exec';
 
-let bot_process : ChildProcess;
+const tryUpdateYtdl = () => checkForUpdate(packageName,
+    () => updatePackage(packageName, startBot)
+);
+
+function startBot() {
+    const bot_process = createBot();
+    bot_process.once('exit', tryUpdateYtdl);
+    process.once('SIGINT', bot_process.kill);
+    process.once('SIGTERM', bot_process.kill);
+}
 
 startBot();
-
-function startBot(){
-    bot_process = exec('npm run bot-start');
-
-    bot_process.stdout?.on('data', console.log);
-    bot_process.stderr?.on('data', console.error);
-
-    bot_process.once('exit', () => shouldUpdate(updateYtdl));
-}
-
-function updateYtdl(){
-    const delay = (ms:number) => new Promise(resolve => setTimeout(resolve, ms));
-    const delayS = (sec:number) => delay(sec * 1000);
-
-    execute('npm update --save ' + packageName, async () => {
-        console.log('Updated');
-        await delayS(5);
-        startBot();
-    });
-}
-
-process.once('SIGINT', () => bot_process.kill('SIGINT'));
-process.once('SIGTERM', () => bot_process.kill('SIGTERM'));

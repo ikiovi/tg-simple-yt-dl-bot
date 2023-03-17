@@ -31,13 +31,15 @@ function updatePackage(packageName: string, onUpdated: () => void) {
     });
 }
 
-function createBot(): ChildProcess {
+function createBotProcess(_process: NodeJS.Process): ChildProcess {
     const bot = exec('npm run bot-start');
 
     bot.stdout?.on('data', console.log);
     bot.stderr?.on('data', console.error);
+    _process.once('SIGINT', bot.kill);
+    _process.once('SIGTERM', bot.kill);
 
     return bot;
 }
 
-export { updatePackage, checkForUpdate, createBot };
+export { updatePackage, checkForUpdate, createBotProcess };

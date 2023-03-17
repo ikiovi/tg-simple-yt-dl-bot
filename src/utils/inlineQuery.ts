@@ -3,26 +3,25 @@ import { InlineQueryResult } from 'grammy/out/types.node';
 import { YoutubeVideoInfo } from '../types';
 import { sizeLimitBytes } from './ytdl';
 
-//TODO: Search for best quality
 export function getResultsFromVideoInfo(info: YoutubeVideoInfo) {
     const { title, contentLength, thumb_url, video_url,
-        video_full_url, videoId: id, ownerChannelName } = info;
+        source_url, videoId: id, ownerChannelName, quality } = info;
     const size = bytesToHumanSize(contentLength);
-    const reply_markup = new InlineKeyboard().url('View on Youtube', video_url);
+    const reply_markup = new InlineKeyboard().url('View on Youtube', source_url);
 
     const isValidSize = contentLength < sizeLimitBytes;
-    const invalidSizeMessage = [`The video size [${size}] is too large.`,
+    const invalidSizeMessage = [`The video size [${size}] is too big.`,
         'Due to Telegram API limits, this will most likely cause an error.'];
 
     const videoItem = {
         type: 'video',
         mime_type: 'video/mp4',
         thumb_url,
-        video_url: video_full_url,
+        video_url,
 
         id: id + '_nocaption',
         title: 'Without caption',
-        description: size
+        description: `${size} | ${quality}`
     } as const;
 
     const result: InlineQueryResult[] = [{

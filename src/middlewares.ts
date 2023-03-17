@@ -22,12 +22,12 @@ export const limiter = {
 
 const getNextUpdateCheckTime = () => new Date(Date.now() + +(process.env.CHECKUPDATESH ?? 20) * 60 * 60000);
 export const updateChecker = {
-    next_update: getNextUpdateCheckTime(),
+    nextUpdate: getNextUpdateCheckTime(),
     middleware(): MiddlewareFn<MyContext> {
         return (_, next) => {
-            if (new Date() < this.next_update) return next();
+            if (new Date() < this.nextUpdate) return next();
             checkForYtdlUpdate();
-            this.next_update = getNextUpdateCheckTime();
+            this.nextUpdate = getNextUpdateCheckTime();
         };
     }
 };

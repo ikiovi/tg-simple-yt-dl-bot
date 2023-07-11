@@ -6,7 +6,7 @@
     "build": "tsc --project tsconfig.json",
     "start": "node ./out/index.js ./out/bot.js",
     "start-bot": "node ./out/bot.js",
-    "prepare": "node ./out/prepare/index.js"
+    "postbuild": "node ./out/postbuild/index.js"
   },
   "author": "ikiovi",
   "dependencies": {

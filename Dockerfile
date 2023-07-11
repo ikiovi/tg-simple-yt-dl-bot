@@ -1,11 +1,9 @@
 FROM node:18.1-alpine as appbuild
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
 COPY . .
+RUN npm ci --omit=dev
 RUN npm run build
-RUN npm run prepare
 
 FROM node:18.1-alpine
 

@@ -4,7 +4,7 @@ import { getAllImports } from './import';
 import { readdirSync, writeFileSync } from 'fs';
 import { ModuleResolutionKind, createCompilerHost } from 'typescript';
 
-const handlersFolder = resolve('src\\handlers');
+const handlersFolder = resolve('src/handlers');
 const unstableDependencies = process.env.npm_package_config_unstableDependencies?.split('\n\n');
 const files = readdirSync(handlersFolder, { encoding: 'utf-8' });
 

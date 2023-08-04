@@ -1,14 +1,19 @@
 import { MyContext } from '../types/context';
-import { InlineQueryContext } from 'grammy';
 import { getResultsFromVideoInfo } from '../external/youtube/parsing';
 import { getYoutubeVideoInfo, youtubeUrlRegex } from '../external/youtube/ytdl';
 import { SwitchComposer } from '../types/composer';
 import { getErrorResult } from '../utils/parsing';
+import { Composer } from 'grammy';
 
-export const youtubeHandler = new SwitchComposer<InlineQueryContext<MyContext>>(__filename);
+export const youtubeHandler = new Composer<MyContext>();
 const exceptions = new Set(['TypeError', 'UnrecoverableError', 'MinigetError']);
+const safeHandler = new SwitchComposer<MyContext>(__filename);
 
-youtubeHandler.inlineQuery(youtubeUrlRegex, async ctx => {
+youtubeHandler.filter(({ inlineQuery, chosenInlineResult }) =>
+    youtubeUrlRegex.test(inlineQuery?.query ?? chosenInlineResult?.query ?? ''), safeHandler
+);
+
+safeHandler.on('inline_query', async ctx => {
     const { query } = ctx.inlineQuery;
     await getYoutubeVideoInfo(query)
         .then(getResultsFromVideoInfo)
@@ -25,5 +30,11 @@ youtubeHandler.inlineQuery(youtubeUrlRegex, async ctx => {
             return await ctx.answerInlineQuery(response, { cache_time: 0 });
         });
 });
+
+//TODO
+// safeHandler.on('chosen_inline_result', ctx => {
+//
+// });
+
 
 //TODO: Strict_Mode | Send placeholder video -> edit with video from yt

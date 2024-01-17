@@ -7,9 +7,10 @@
   },
   "author": "ikiovi",
   "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@types/node": "^20.11.5",
     "dotenv": "^16.3.1",
-    "fastify": "^4.0.0",
-    "@types/node": "^20.11.4",
+    "fastify": "^4.25.2",
     "typescript": "^5.3.3"
   }
 }

@@ -24,6 +24,7 @@ server.listen({ port: +(process.env.PORT ?? 8080), host: process.env.HOST ?? '12
 });
 
 function convertToGif(url: string, duration = 4) {
+    //TODO: Doesn't work
     const ffmpeg = spawn(process.env.FFMPEG_PATH!, [
         '-hide_banner',
         '-i', url,

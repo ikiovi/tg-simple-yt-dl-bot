@@ -181,7 +181,7 @@ type UploadFile<T extends 'audio' | 'video'> = {
 } & Omit<T extends 'audio' ? InputMediaAudio : InputMediaVideo, 'media'>;
 
 async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, chat_id: number, file: UploadFile<T>, removeAfter = true): Promise<string> {
-    const method = 'send' + file.type[0].toUpperCase() + file.type.substring(1) as T extends { type: 'video' } ? 'sendVideo' : 'sendAudio';
+    const method = 'send' + file.type[0].toUpperCase() + file.type.substring(1) as T extends 'video' ? 'sendVideo' : 'sendAudio';
     const message: Message = await ctx.api[method](chat_id, new InputFile(file.data), { ...file, ...mediaMessageOptions });
     if (removeAfter) await ctx.api.deleteMessage(chat_id, message.message_id);
     return message[file.type]!.file_id;

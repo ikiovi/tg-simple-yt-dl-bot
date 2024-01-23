@@ -14,8 +14,8 @@ COPY --from=appbuild /app/out ./out
 
 RUN apk update
 RUN apk add
-RUN apk add ffmpeg
-ENV FFMPEG_PATH ffmpeg
+RUN apk add imagemagick
+ENV IMAGEMAGICK_CONVERT convert
 
 EXPOSE 80
 ENV PORT 80

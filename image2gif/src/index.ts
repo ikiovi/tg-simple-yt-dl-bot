@@ -5,10 +5,12 @@ import { spawn } from 'child_process';
 
 const server = fastify();
 server.register(cors, {
-    origin: /^(.*\.)?telegram\.org$/g
+    origin: process.env.ORIGIN_REGEXP ?? '*',
+    methods: ['GET'],
+    cacheControl: 'public, max-age=604800, immutable'
 });
 
-server.get('/2gif', (req, res) => {
+server.get('/2gif', async (req, res) => {
     const query = req.query as Record<string, string>;
     console.log(query.a);
     if (!URL.canParse(query.a)) return res.code(400).send('Invalid address');
@@ -23,17 +25,15 @@ server.listen({ port: +(process.env.PORT ?? 8080), host: process.env.HOST ?? '12
     console.log(`Server listening at ${address}`);
 });
 
-function convertToGif(url: string, duration = 4) {
-    //TODO: Doesn't work
-    const ffmpeg = spawn(process.env.FFMPEG_PATH!, [
-        '-hide_banner',
-        '-i', url,
-        '-t', `${duration}`,
-        '-f', 'gif',
-        'pipe:1'
+function convertToGif(url: string, delay = 3) {
+    const convert = spawn(process.env.IMAGEMAGICK_CONVERT!, [
+        '-delay', `${delay * 100}`,
+        '-loop', '0',
+        url, url,
+        'gif:-'
     ], {
         windowsHide: true,
-        stdio: ['inherit', 'pipe', 'inherit'],
+        stdio: ['inherit', 'pipe', 'inherit']
     });
-    return ffmpeg.stdout!;
+    return convert.stdout!;
 }

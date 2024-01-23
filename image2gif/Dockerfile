@@ -13,7 +13,7 @@ COPY --from=appbuild /app/node_modules ./node_modules
 COPY --from=appbuild /app/out ./out
 
 RUN apk update
-RUN apk add
+RUN apk add curl
 RUN apk add imagemagick
 ENV IMAGEMAGICK_CONVERT convert
 

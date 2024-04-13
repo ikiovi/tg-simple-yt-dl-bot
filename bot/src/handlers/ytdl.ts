@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import { Readable, Writable } from 'stream';
 import { MyContext } from '../types/context';
 import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
-import { InputMediaAudio, InputMediaVideo, Message } from 'grammy/types';
+import { InlineQueryResultCachedVideo, InlineQueryResultVideo, InputMediaAudio, InputMediaVideo, Message } from 'grammy/types';
 import { Composer, InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
 import { logger } from '../utils/logger';
 import { YoutubeMediaInfo } from '../external/youtube/types';
@@ -21,7 +21,7 @@ ytdlHandler.drop(
 ytdlHandler.on(':text', async ctx => {
     const info = await getYoutubeVideoInfo(ctx.msg.text);
     const { source_url: url, simpleFormat, videoFormat, audioFormat, chooseSimple } = info;
-    const opts = { supports_streaming: true } as const;
+    const opts = { supports_streaming: true, duration: +info.duration } as const;
 
     if (!simpleFormat && !videoFormat) {
         logger.info('Exceeds size limit', { url: info.source_url });
@@ -66,7 +66,6 @@ ytdlHandler.on('inline_query', async ctx => {
         audio_file_id: placeholders[1],
         reply_markup: new InlineKeyboard().text('Loading...')
     } as const;
-    const opts = { cache_time: 0 };
     const video = {
         ...audio,
         type: 'video',
@@ -74,22 +73,18 @@ ytdlHandler.on('inline_query', async ctx => {
         caption: `${info.title}\n${info.ownerChannelName}`,
         thumbnail_url: info.thumbnail_url,
     } as const;
-
-    if (!URL.canParse(process.env.GIF_GENERATOR_ADDRESS ?? '')) {
-        return await ctx.answerInlineQuery([{
-            ...video,
-            video_file_id: placeholders[0],
-        }, audio], opts);
-    }
-
-    const url = new URL(process.env.GIF_GENERATOR_ADDRESS!);
-    url.searchParams.set('a', info.thumbnail_url);
-
-    await ctx.answerInlineQuery([{
+    const videoNoCaption = {
         ...video,
-        mime_type: 'video/mp4',
-        video_url: url.toString(),
-    }, audio], opts);
+        id: info.videoId + '_nocap_v',
+        title: 'No caption video',
+        caption: undefined
+    } as const;
+
+    await ctx.answerInlineQuery([
+        getVideoInlineResult(video, info.thumbnail_url),
+        getVideoInlineResult(videoNoCaption, info.thumbnail_url),
+        audio
+    ], { cache_time: 0 });
 });
 
 ytdlHandler.on('chosen_inline_result', async (ctx, next) => {
@@ -103,14 +98,15 @@ ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
         duration, source_url: url, title, ownerChannelName } = ctx.session.lastVideo!;
 
     if (!inline_message_id) return logger.error('Unreachable');
-
+    const caption = ctx.chosenInlineResult.result_id?.includes('_nocap') ? undefined : `${title}\n${ownerChannelName}`;
     const video = chooseSimple ?
         downloadSpecificFormat(url, simpleFormat) :
         mergeVideo(url, videoFormat.itag, audioFormat.itag, ['-t', duration]);
 
-    const file_id = await uploadToTelegram(ctx, chat_id, { type: 'video', data: video });
-    await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.video(file_id, { caption: `${title}\n${ownerChannelName}` }));
+    const file_id = await uploadToTelegram(ctx, chat_id, { type: 'video', data: video, duration: +duration });
+    await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.video(file_id, { caption }));
 });
+
 ytdlHandler.chosenInlineResult(/_a$/, async ctx => {
     const { from: { id: chat_id }, inline_message_id } = ctx.chosenInlineResult;
     const { audioFormat, title, ownerChannelName, source_url: url } = ctx.session.lastVideo!;
@@ -129,15 +125,16 @@ function mergeVideo(url: string, videoItag: number, audioItag: number, flags: st
 
     const ffmpeg = spawn(process.env.FFMPEG_PATH!, [
         '-hide_banner',
+        ...flags,
         '-i', 'pipe:3',
         '-i', 'pipe:4',
         '-c:v', 'copy',
-        '-lossless', '1',
-        '-c:a', 'copy',
-        ...flags,
+        // '-lossless', '1',
+        '-c:a', 'aac',
         '-map', '0:v',
         '-map', '1:a',
-        '-f', 'webm',
+        '-movflags', '+empty_moov', //frag_keyframe
+        '-f', 'mp4',
         'pipe:1'
     ], {
         windowsHide: true,
@@ -190,4 +187,18 @@ async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, cha
 async function initPlaceholders(ctx: MyContext, chat_id: number) {
     placeholders[0] ??= await uploadToTelegram(ctx, chat_id, { data: createPlaceholder('mpeg'), type: 'video' });
     placeholders[1] ??= await uploadToTelegram(ctx, chat_id, { data: createPlaceholder('mp3'), type: 'audio' });
+}
+
+function getVideoInlineResult<T extends InlineQueryResultCachedVideo | InlineQueryResultVideo>(init: Partial<T>, thumbnail_url: string): T {
+    if (!URL.canParse(process.env.GIF_GENERATOR_ADDRESS ?? '')) {
+        return { ...init, video_file_id: placeholders[0] } as T;
+    }
+
+    const url = new URL(process.env.GIF_GENERATOR_ADDRESS!);
+    url.searchParams.set('a', thumbnail_url);
+    return {
+        ...init,
+        mime_type: 'video/mp4',
+        video_url: url.toString(),
+    } as T;
 }

@@ -14,13 +14,3 @@ services:
             # If empty - will use empty video as placeholder.
             # https://example.co/2gif or http://127.0.0.1:8080/2gif
             - GIF_GENERATOR_ADDRESS=
-    # image2gif:
-    #     container_name: node-image-to-gif-server
-    #     build:
-    #         context: ./image2gif
-    #     stop_signal: SIGINT
-    #     restart: on-failure
-    #     ports:
-    #         - 8235:80
-    #     # environment:
-    #     #     - HOST=

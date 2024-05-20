@@ -130,11 +130,11 @@ function mergeVideo(url: string, videoItag: number, audioItag: number, flags: st
         '-i', 'pipe:4',
         '-c:v', 'copy',
         // '-lossless', '1',
-        '-c:a', 'aac',
+        '-c:a', process.env.VIDEO_CONTAINER == 'webm' ? 'copy' : 'aac',
         '-map', '0:v',
         '-map', '1:a',
-        '-movflags', '+empty_moov', //frag_keyframe
-        '-f', 'mp4',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
         'pipe:1'
     ], {
         windowsHide: true,

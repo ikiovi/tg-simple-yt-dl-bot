@@ -29,8 +29,8 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
     if (isHQFormat(simpleFormat)) return { ...result, chooseSimple: true };
 
     const onlyVideoFormats = workingFormats.filter(f =>
-        f.container === 'webm' &&
-        f.codecs.startsWith('vp9') &&
+        f.container === (process.env.VIDEO_CONTAINER ?? 'mp4') &&
+        (process.env.VIDEO_CONTAINER == 'webm' ? f.codecs.startsWith('vp9') : true) &&
         !f.hasAudio &&
         +f.contentLength + +hqAudioFormat.contentLength < sizeLimitBytes
     );

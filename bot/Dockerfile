@@ -16,5 +16,6 @@ RUN apk update
 RUN apk add
 RUN apk add ffmpeg
 ENV FFMPEG_PATH ffmpeg
+ENV TEMP_DIR /tmp
 
 CMD npm start

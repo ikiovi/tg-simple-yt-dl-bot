@@ -1,12 +1,15 @@
 import ytdl from 'ytdl-core';
-import { spawn } from 'child_process';
-import { Readable, Writable } from 'stream';
+import { logger } from '../utils/logger';
 import { MyContext } from '../types/context';
 import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
 import { InlineQueryResultCachedVideo, InlineQueryResultVideo, InputMediaAudio, InputMediaVideo, Message } from 'grammy/types';
 import { Composer, InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
-import { logger } from '../utils/logger';
 import { YoutubeMediaInfo } from '../external/youtube/types';
+import { join } from 'path';
+import { existsSync } from 'fs';
+import { Writable } from 'stream';
+import { readFile, unlink } from 'fs/promises';
+import { SpawnOptions, spawn } from 'child_process';
 
 const placeholders: string[] = [];
 const mediaMessageOptions = { disable_notification: true, supports_streaming: true } as const;
@@ -19,8 +22,8 @@ ytdlHandler.drop(
 );
 
 ytdlHandler.on(':text', async ctx => {
-    const info = await getYoutubeVideoInfo(ctx.msg.text);
-    const { source_url: url, simpleFormat, videoFormat, audioFormat, chooseSimple } = info;
+    const info = await ctx.limiter.wrap(getYoutubeVideoInfo)(ctx.msg.text);
+    const { videoId, source_url: url, simpleFormat, videoFormat, audioFormat, chooseSimple } = info;
     const opts = { supports_streaming: true, duration: +info.duration } as const;
 
     if (!simpleFormat && !videoFormat) {
@@ -34,7 +37,7 @@ ytdlHandler.on(':text', async ctx => {
     const audio = downloadSpecificFormat(url, audioFormat);
     if (info.category == 'Music') await ctx.replyWithAudio(new InputFile(audio), { title: info.title, performer: info.ownerChannelName });
 
-    const video = mergeVideo(url, videoFormat!.itag, audioFormat.itag, ['-t', info.duration]);
+    const video = await mergeVideo(url, videoFormat!.itag, audioFormat.itag, videoId + ctx.from?.id);
     await ctx.replyWithVideo(new InputFile(video), opts);
 });
 
@@ -89,20 +92,19 @@ ytdlHandler.on('inline_query', async ctx => {
 
 ytdlHandler.on('chosen_inline_result', async (ctx, next) => {
     if (!ctx.session.lastVideo) return logger.error('Unreachable');
-    await next();
+    await ctx.limiter.wrap(next)();
 });
 
 ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
     const { from: { id: chat_id }, inline_message_id } = ctx.chosenInlineResult;
-    const { chooseSimple, simpleFormat, videoFormat, audioFormat,
+    const { videoId, chooseSimple, simpleFormat, videoFormat, audioFormat,
         duration, source_url: url, title, ownerChannelName } = ctx.session.lastVideo!;
 
     if (!inline_message_id) return logger.error('Unreachable');
     const caption = ctx.chosenInlineResult.result_id?.includes('_nocap') ? undefined : `${title}\n${ownerChannelName}`;
     const video = chooseSimple ?
         downloadSpecificFormat(url, simpleFormat) :
-        mergeVideo(url, videoFormat.itag, audioFormat.itag, ['-t', duration]);
-
+        () => mergeVideo(url, videoFormat.itag, audioFormat.itag, videoId + chat_id);
     const file_id = await uploadToTelegram(ctx, chat_id, { type: 'video', data: video, duration: +duration });
     await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.video(file_id, { caption }));
 });
@@ -119,40 +121,48 @@ ytdlHandler.chosenInlineResult(/_a$/, async ctx => {
     await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.audio(file_id));
 });
 
-function mergeVideo(url: string, videoItag: number, audioItag: number, flags: string[] = []) {
+async function mergeVideo(url: string, videoItag: number, audioItag: number, filename: string) {
     const video = downloadSpecificFormat(url, videoItag);
     const audio = downloadSpecificFormat(url, audioItag);
 
-    const ffmpeg = spawn(process.env.FFMPEG_PATH!, [
+    const path = join(process.env.TEMP_DIR!, filename);
+    const ffmpegArgs = [
         '-hide_banner',
-        ...flags,
         '-i', 'pipe:3',
         '-i', 'pipe:4',
         '-c:v', 'copy',
-        // '-lossless', '1',
         '-c:a', process.env.VIDEO_CONTAINER == 'webm' ? 'copy' : 'aac',
         '-map', '0:v',
         '-map', '1:a',
-        '-movflags', 'frag_keyframe+empty_moov',
         '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
-        'pipe:1'
-    ], {
+        path
+    ];
+    const spawnArgs: SpawnOptions = {
         windowsHide: true,
         stdio: [
             // Standard: stdin, stdout, stderr 
-            'inherit', 'pipe', 'inherit',
-            'pipe', 'pipe',
-        ],
-    });
+            'inherit', 'inherit', 'inherit',
+            'pipe', 'pipe'
+        ]
+    };
 
-    video.pipe(ffmpeg.stdio[3]! as Writable);
-    audio.pipe(ffmpeg.stdio[4]! as Writable);
+    if (!existsSync(path)) {
+        await new Promise((res, rej) => {
+            const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+            ffmpeg.on('', rej);
+            ffmpeg.on('exit', res);
+            video.pipe(ffmpeg.stdio[3]! as Writable);
+            audio.pipe(ffmpeg.stdio[4]! as Writable);
+        })
+    }
 
-    return ffmpeg.stdout!;
+    return readFile(path).finally(() => unlink(path));
 }
 
 function createPlaceholder(format: 'mp3' | 'mpeg') {
-    const ffmpeg = spawn(process.env.FFMPEG_PATH!, [
+    const path = join(process.env.TEMP_DIR!, `placeholder.${format}`);
+
+    const ffmpegArgs = [
         '-hide_banner',
         '-f', 'lavfi',
         '-t', '5',
@@ -165,16 +175,23 @@ function createPlaceholder(format: 'mp3' | 'mpeg') {
         '-pix_fmt', 'yuv420p',
         '-metadata', 'title=Audio',
         '-f', format,
-        'pipe:1'
-    ], {
+        path
+    ];
+    const spawnArgs: SpawnOptions = {
         windowsHide: true,
-        stdio: ['inherit', 'pipe', 'inherit'],
-    });
-    return ffmpeg.stdout!;
+        stdio: ['inherit', 'inherit', 'inherit'],
+    };
+
+    return new Promise((res, rej) => {
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+        ffmpeg.on('error', rej);
+        ffmpeg.on('exit', res);
+    }).then(() => readFile(path).finally(() => unlink(path)));
+
 }
 
 type UploadFile<T extends 'audio' | 'video'> = {
-    type: T, data: Readable
+    type: T, data: ConstructorParameters<typeof InputFile>[0]
 } & Omit<T extends 'audio' ? InputMediaAudio : InputMediaVideo, 'media'>;
 
 async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, chat_id: number, file: UploadFile<T>, removeAfter = true): Promise<string> {
@@ -185,8 +202,8 @@ async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, cha
 }
 
 async function initPlaceholders(ctx: MyContext, chat_id: number) {
-    placeholders[0] ??= await uploadToTelegram(ctx, chat_id, { data: createPlaceholder('mpeg'), type: 'video' });
-    placeholders[1] ??= await uploadToTelegram(ctx, chat_id, { data: createPlaceholder('mp3'), type: 'audio' });
+    placeholders[0] ??= await uploadToTelegram(ctx, chat_id, { data: () => createPlaceholder('mpeg'), type: 'video' });
+    placeholders[1] ??= await uploadToTelegram(ctx, chat_id, { data: () => createPlaceholder('mp3'), type: 'audio' });
 }
 
 function getVideoInlineResult<T extends InlineQueryResultCachedVideo | InlineQueryResultVideo>(init: Partial<T>, thumbnail_url: string): T {

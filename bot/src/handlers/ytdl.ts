@@ -35,7 +35,9 @@ ytdlHandler.on(':text', async ctx => {
         return await ctx.replyWithVideo(new InputFile(downloadSpecificFormat(url, info.simpleFormat!)), opts);
     }
     const audio = downloadSpecificFormat(url, audioFormat);
-    if (info.category == 'Music') await ctx.replyWithAudio(new InputFile(audio), { title: info.title, performer: info.ownerChannelName });
+    if (info.category == 'Music') {
+        await ctx.replyWithAudio(new InputFile(audio), { title: info.title, performer: info.ownerChannelName });
+    }
 
     const video = await mergeVideo(url, videoFormat!.itag, audioFormat.itag, videoId + ctx.from?.id);
     await ctx.replyWithVideo(new InputFile(video), opts);
@@ -74,7 +76,7 @@ ytdlHandler.on('inline_query', async ctx => {
         type: 'video',
         id: info.videoId + '_v',
         caption: `${info.title}\n${info.ownerChannelName}`,
-        thumbnail_url: info.thumbnail_url,
+        thumbnail_url: info.thumbnail_url
     } as const;
     const videoNoCaption = {
         ...video,
@@ -106,7 +108,12 @@ ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
         downloadSpecificFormat(url, simpleFormat) :
         () => mergeVideo(url, videoFormat.itag, audioFormat.itag, videoId + chat_id);
     const file_id = await uploadToTelegram(ctx, chat_id, { type: 'video', data: video, duration: +duration });
-    await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.video(file_id, { caption }));
+    const reply_markup = new InlineKeyboard().url('Source', url);
+    await ctx.api.editMessageMediaInline(
+        inline_message_id,
+        InputMediaBuilder.video(file_id, { caption }),
+        { reply_markup }
+    );
 });
 
 ytdlHandler.chosenInlineResult(/_a$/, async ctx => {
@@ -118,7 +125,10 @@ ytdlHandler.chosenInlineResult(/_a$/, async ctx => {
     const audio = downloadSpecificFormat(url, audioFormat);
     const file_id = await uploadToTelegram(ctx, chat_id, { type: 'audio', data: audio, title, performer: ownerChannelName });
 
-    await ctx.api.editMessageMediaInline(inline_message_id, InputMediaBuilder.audio(file_id));
+    await ctx.api.editMessageMediaInline(
+        inline_message_id,
+        InputMediaBuilder.audio(file_id)
+    );
 });
 
 async function mergeVideo(url: string, videoItag: number, audioItag: number, filename: string) {
@@ -149,7 +159,7 @@ async function mergeVideo(url: string, videoItag: number, audioItag: number, fil
     if (!existsSync(path)) {
         await new Promise((res, rej) => {
             const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
-            ffmpeg.on('', rej);
+            ffmpeg.on('error', rej);
             ffmpeg.on('exit', res);
             video.pipe(ffmpeg.stdio[3]! as Writable);
             audio.pipe(ffmpeg.stdio[4]! as Writable);
@@ -194,7 +204,7 @@ type UploadFile<T extends 'audio' | 'video'> = {
     type: T, data: ConstructorParameters<typeof InputFile>[0]
 } & Omit<T extends 'audio' ? InputMediaAudio : InputMediaVideo, 'media'>;
 
-async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, chat_id: number, file: UploadFile<T>, removeAfter = true): Promise<string> {
+async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, chat_id: number, file: UploadFile<T>, removeAfter = true) {
     const method = 'send' + file.type[0].toUpperCase() + file.type.substring(1) as T extends 'video' ? 'sendVideo' : 'sendAudio';
     const message: Message = await ctx.api[method](chat_id, new InputFile(file.data), { ...file, ...mediaMessageOptions });
     if (removeAfter) await ctx.api.deleteMessage(chat_id, message.message_id);
@@ -216,6 +226,6 @@ function getVideoInlineResult<T extends InlineQueryResultCachedVideo | InlineQue
     return {
         ...init,
         mime_type: 'video/mp4',
-        video_url: url.toString(),
+        video_url: url.toString()
     } as T;
 }

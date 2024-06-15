@@ -2,17 +2,18 @@ import ytdl from 'ytdl-core';
 import { logger } from '../utils/logger';
 import { MyContext } from '../types/context';
 import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
-import { InlineQueryResultCachedVideo, InlineQueryResultVideo, InputMediaAudio, InputMediaVideo, Message } from 'grammy/types';
+import { InlineQueryResultCachedVideo, InlineQueryResultVideo, Message } from 'grammy/types';
 import { Composer, InlineKeyboard, InputFile, InputMediaBuilder } from 'grammy';
 import { YoutubeMediaInfo } from '../external/youtube/types';
-import { join } from 'path';
-import { existsSync } from 'fs';
-import { Writable } from 'stream';
-import { readFile, unlink } from 'fs/promises';
+import { UploadFile, uploadMethod } from '../types/file';
 import { SpawnOptions, spawn } from 'child_process';
+import { readFile, unlink } from 'fs/promises';
+import { Writable } from 'stream';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 const placeholders: string[] = [];
-const mediaMessageOptions = { disable_notification: true, supports_streaming: true } as const;
+const ffmpegGlobalArgs = ['-hide_banner', '-loglevel', 'error'] as const;
 
 export const ytdlHandler = new Composer<MyContext>();
 
@@ -137,7 +138,7 @@ async function mergeVideo(url: string, videoItag: number, audioItag: number, fil
 
     const path = join(process.env.TEMP_DIR!, filename);
     const ffmpegArgs = [
-        '-hide_banner',
+        ...ffmpegGlobalArgs,
         '-i', 'pipe:3',
         '-i', 'pipe:4',
         '-c:v', 'copy',
@@ -169,11 +170,11 @@ async function mergeVideo(url: string, videoItag: number, audioItag: number, fil
     return readFile(path).finally(() => unlink(path));
 }
 
-function createPlaceholder(format: 'mp3' | 'mpeg') {
+async function createPlaceholder(format: 'mp3' | 'mpeg') {
     const path = join(process.env.TEMP_DIR!, `placeholder.${format}`);
 
     const ffmpegArgs = [
-        '-hide_banner',
+        ...ffmpegGlobalArgs,
         '-f', 'lavfi',
         '-t', '5',
         '-i', 'color=c=black:s=640x480',
@@ -192,21 +193,22 @@ function createPlaceholder(format: 'mp3' | 'mpeg') {
         stdio: ['inherit', 'inherit', 'inherit'],
     };
 
-    return new Promise((res, rej) => {
+    await new Promise((res, rej) => {
         const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
         ffmpeg.on('error', rej);
         ffmpeg.on('exit', res);
-    }).then(() => readFile(path).finally(() => unlink(path)));
+    });
 
+    return readFile(path).finally(() => unlink(path));
 }
 
-type UploadFile<T extends 'audio' | 'video'> = {
-    type: T, data: ConstructorParameters<typeof InputFile>[0]
-} & Omit<T extends 'audio' ? InputMediaAudio : InputMediaVideo, 'media'>;
-
 async function uploadToTelegram<T extends 'audio' | 'video'>(ctx: MyContext, chat_id: number, file: UploadFile<T>, removeAfter = true) {
-    const method = 'send' + file.type[0].toUpperCase() + file.type.substring(1) as T extends 'video' ? 'sendVideo' : 'sendAudio';
-    const message: Message = await ctx.api[method](chat_id, new InputFile(file.data), { ...file, ...mediaMessageOptions });
+    const method = uploadMethod[file.type];
+    const message: Message = await ctx.api[method](
+        chat_id,
+        new InputFile(file.data),
+        { ...file, disable_notification: true, supports_streaming: true }
+    );
     if (removeAfter) await ctx.api.deleteMessage(chat_id, message.message_id);
     return message[file.type]!.file_id;
 }

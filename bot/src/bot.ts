@@ -35,8 +35,8 @@ bot.use(ytdlHandler);
 //#endregion
 bot.catch(err => logger.error(err.error));
 
-const options = { runner: {}, sink: {}, source: {} } as RunOptions<unknown>;
-options.runner!.fetch = { allowed_updates: ['inline_query', 'message', 'callback_query', 'chosen_inline_result'] };
+const fetch = { allowed_updates: ['inline_query', 'message', 'callback_query', 'chosen_inline_result'] };
+const options = { runner: { fetch }, sink: {}, source: {} } as RunOptions<unknown>;
 const runner = run(bot, options);
 
 const stopRunner = () => runner.isRunning() && runner.stop();

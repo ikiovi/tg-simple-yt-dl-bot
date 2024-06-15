@@ -28,7 +28,7 @@ bot.use(session({ initial: () => ({}), getSessionKey }));
 bot.use(async (ctx, next) => {
     ctx.limiter = limiter;
     await next();
-})
+});
 
 //#region Register handlers
 bot.use(ytdlHandler);
@@ -40,5 +40,5 @@ const options = { runner: { fetch }, sink: {}, source: {} } as RunOptions<unknow
 const runner = run(bot, options);
 
 const stopRunner = () => runner.isRunning() && runner.stop();
-process.once("SIGINT", stopRunner);
-process.once("SIGTERM", stopRunner);
+process.once('SIGINT', stopRunner);
+process.once('SIGTERM', stopRunner);

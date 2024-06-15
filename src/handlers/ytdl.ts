@@ -164,7 +164,7 @@ async function mergeVideo(url: string, videoItag: number, audioItag: number, fil
             ffmpeg.on('exit', res);
             video.pipe(ffmpeg.stdio[3]! as Writable);
             audio.pipe(ffmpeg.stdio[4]! as Writable);
-        })
+        });
     }
 
     return readFile(path).finally(() => unlink(path));

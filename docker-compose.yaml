@@ -2,9 +2,9 @@ version: '3.8'
 
 services:
     bot:
-        container_name: tg-simple-ytdl-bot
+        container_name: tg-simple-ytdl
         build:
-            context: ./bot
+            context: .
         stop_signal: SIGINT
         restart: on-failure
         env_file: .env

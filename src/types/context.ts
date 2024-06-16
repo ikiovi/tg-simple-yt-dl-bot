@@ -1,13 +1,11 @@
-import { Context, SessionFlavor } from 'grammy';
-import { YoutubeMediaInfo } from '../external/youtube/types';
-import Bottleneck from 'bottleneck';
+import { Context } from 'grammy';
+import { YoutubeVideo } from './youtube';
 
-export type MyContext = Context & SessionFlavor<SessionData> & LimiterFlavor
+export type MyContext = Context & YtdlHelperFlavor
 
-interface LimiterFlavor {
-    limiter: Bottleneck
-}
-
-interface SessionData {
-    lastVideo?: YoutubeMediaInfo<'Checked'>
+interface YtdlHelperFlavor {
+    ytdl: {
+        get: (video: string) => Promise<YoutubeVideo>
+        initPlaceholders: (chat_id: number) => Promise<void>
+    }
 }

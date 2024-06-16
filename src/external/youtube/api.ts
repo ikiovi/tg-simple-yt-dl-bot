@@ -1,4 +1,5 @@
-import { YoutubeMediaInfo } from './types';
+import { copyObject } from '../../utils/object';
+import { YoutubeMediaInfo, ytMediaInfoObjTemplate } from './types';
 import ytdl, { chooseFormat, getInfo, videoFormat } from 'ytdl-core';
 
 const sizeLimitMB = 50;
@@ -37,8 +38,8 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
     const videoFormat = onlyVideoFormats.filter(isHQFormat)[0] ?? onlyVideoFormats[0];
 
     return {
-        ...result,
         videoFormat,
+        ...copyObject(result, ytMediaInfoObjTemplate) as YoutubeMediaInfo,
         chooseSimple: !!simpleFormat && (!videoFormat || isHasGreaterQuality(simpleFormat, videoFormat))
     };
 }

@@ -1,7 +1,6 @@
 import { videoFormat } from 'ytdl-core';
 
-/* eslint-disable @typescript-eslint/naming-convention */
-export type YoutubeMediaInfo<T extends 'Checked' | 'Unknown' = 'Unknown'> = {
+export type YoutubeMediaInfo = {
     title: string
     videoId: string
     source_url: string
@@ -10,17 +9,21 @@ export type YoutubeMediaInfo<T extends 'Checked' | 'Unknown' = 'Unknown'> = {
     duration: string
     category: string
     audioFormat: videoFormat
-
-} & (T extends 'Unknown' ? {
     simpleFormat?: videoFormat
     videoFormat?: videoFormat
     chooseSimple: boolean
-} : {
-    simpleFormat: videoFormat
-    videoFormat?: videoFormat
-    chooseSimple: true
-} | {
-    simpleFormat?: videoFormat
-    videoFormat: videoFormat
+}
+
+export const ytMediaInfoObjTemplate = {
+    title: '',
+    videoId: '',
+    source_url: '',
+    thumbnail_url: '',
+    ownerChannelName: '',
+    duration: '',
+    category: '',
+    audioFormat: null,
+    simpleFormat: null,
+    videoFormat: null,
     chooseSimple: false
-})
+} as const;

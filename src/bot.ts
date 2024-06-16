@@ -1,34 +1,32 @@
 import 'dotenv/config';
-import { Bot, Context, session } from 'grammy';
+import { Bot, Context } from 'grammy';
 import { logger } from './utils/logger';
 import { MyContext } from './types/context';
 import { ytdlHandler } from './handlers/ytdl';
 import { existsSync, mkdirSync } from 'fs';
-import Bottleneck from 'bottleneck';
 import { RunOptions, run, sequentialize } from '@grammyjs/runner';
+import { YTDownloadHelper } from './services/ytdlHelper';
 
 const token = process.env.TOKEN;
 if (!token) throw new Error('TOKEN must be provided!');
+if (!process.env.TEMP_DIR) throw new Error('TEMP_DIR must be provided!');
+if (!process.env.FFMPEG_PATH) throw new Error('FFMPEG_PATH must be provided!');
 
 const bot = new Bot<MyContext>(token);
-const limiter = new Bottleneck({ maxConcurrent: 6, minTime: 2000 });
+const ytHelper = new YTDownloadHelper(
+    +(process.env.CACHE_MAX_CAPACITY ?? 500),
+    +(process.env.CACHE_TTL_M ?? 120) * 60 * 1000
+);
 logger.debug('Started!');
 
-process.env.TEMP_DIR ??= '/tmp';
 if (!existsSync(process.env.TEMP_DIR)) {
     logger.info(`${process.env.TEMP_DIR} does not exist. Creating...`);
     mkdirSync(process.env.TEMP_DIR);
 }
 
 bot.command('ping', ctx => ctx.reply('pong')); // To check if bot is alive ¯\_(ツ)_/¯
-
-const getSessionKey = (ctx: Context) => ctx.from?.id.toString();
-bot.use(sequentialize(getSessionKey));
-bot.use(session({ initial: () => ({}), getSessionKey }));
-bot.use(async (ctx, next) => {
-    ctx.limiter = limiter;
-    await next();
-});
+bot.use(sequentialize((ctx: Context) => ctx.from?.id.toString()));
+bot.use(ytHelper);
 
 //#region Register handlers
 bot.use(ytdlHandler);

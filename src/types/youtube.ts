@@ -13,16 +13,15 @@ export type YoutubeMedia = YoutubeMediaInfo & {
         video_id?: string | null
         audio_id?: string | null
     }
-}
-
-export type YoutubeVideo = Omit<YoutubeMedia, 'file_id'> & {
+    progress: {
+        finished(type: SMU, callback: (value: string) => void): void
+        error(type: SMU, callback: (value: string) => void): void
+        once(type: SMU, callback: ProgressEventCallback): void
+        on(type: SMU, callback: ProgressEventCallback): void
+    }
     downloadOrCached(type?: SMU): Promise<string | InputFile>
     getCached(type?: SMU, allowPlaceholder?: boolean): Promise<string>
     replyWith<T extends SMU = SMU>(type?: T, options?: Omit<UploadFileOptions<T>, 'type'>, chat_id?: number): Promise<Message>
-    progress?: {
-        finished(type: SMU, callback: (value: string) => void): void
-        error(type: SMU, callback: (value: string) => void): void
-        once(type: SMU, callback: ProgressEventCallback): void;
-        on(type: SMU, callback: ProgressEventCallback): void;
-    }
-};
+}
+
+export type YoutubeVideo = Omit<YoutubeMedia, 'file_id' | 'emitter'>;

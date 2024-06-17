@@ -80,6 +80,7 @@ ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
     const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
+
     let prev = 0;
     video.progress?.on('video', p => {
         const progress = Math.round(p / 25);

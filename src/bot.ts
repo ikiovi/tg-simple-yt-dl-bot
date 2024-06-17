@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Bot, Context } from 'grammy';
+import { Bot } from 'grammy';
 import { logger } from './utils/logger';
 import { MyContext } from './types/context';
 import { ytdlHandler } from './handlers/ytdl';
@@ -25,7 +25,7 @@ if (!existsSync(process.env.TEMP_DIR)) {
 }
 
 bot.command('ping', ctx => ctx.reply('pong')); // To check if bot is alive ¯\_(ツ)_/¯
-bot.use(sequentialize((ctx: Context) => ctx.from?.id.toString()));
+bot.use(sequentialize(ctx => ctx.from?.id.toString()));
 bot.use(ytHelper);
 
 //#region Register handlers

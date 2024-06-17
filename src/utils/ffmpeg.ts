@@ -1,18 +1,19 @@
 import { downloadSpecificFormat } from '../external/youtube/api';
 import { SpawnOptions, spawn } from 'child_process';
-import { EventEmitter, Writable } from 'stream';
+import { YoutubeMedia } from '../types/youtube';
 import { readFile, unlink } from 'fs/promises';
-import { videoFormat } from 'ytdl-core';
+import { Readable, Writable } from 'stream';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
 const ffmpegGlobalArgs = ['-hide_banner', '-v', 'error'] as const;
 
-export async function mergeVideo(url: string, videoFormat: videoFormat | number, audioItag: videoFormat | number, filename: string, emitter?: EventEmitter) {
-    const path = join(process.env.TEMP_DIR!, filename);
+export async function downloadAndMergeVideo(media: YoutubeMedia) {
+    const { videoId, source_url, videoFormat, audioFormat, emitter } = media;
+    const path = join(process.env.TEMP_DIR!, videoId);
     if (existsSync(path)) return readFile(path);
-    const video = downloadSpecificFormat(url, videoFormat);
-    const audio = downloadSpecificFormat(url, audioItag);
+    const video = downloadSpecificFormat(source_url, videoFormat!);
+    const audio = downloadSpecificFormat(source_url, audioFormat);
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,
@@ -46,6 +47,45 @@ export async function mergeVideo(url: string, videoFormat: videoFormat | number,
         });
         video.pipe(ffmpeg.stdio[3]! as Writable);
         audio.pipe(ffmpeg.stdio[4]! as Writable);
+    });
+
+    return readFile(path).finally(() => unlink(path));
+}
+
+export async function downloadAudio(media: YoutubeMedia) {
+    const { videoId, source_url, audioFormat, emitter, title, ownerChannelName } = media;
+    const path = join(process.env.TEMP_DIR!, videoId + '.mp3');
+    if (existsSync(path)) return readFile(path);
+    const audio = downloadSpecificFormat(source_url, audioFormat);
+
+    const ffmpegArgs = [
+        ...ffmpegGlobalArgs,
+        '-progress', '-',
+        '-i', 'pipe:3',
+        '-metadata', `title="${title.replaceAll('"', '')}"`,
+        '-metadata', `artist="${ownerChannelName.replaceAll('"', '')}"`,
+        '-f', 'mp3',
+        path
+    ];
+    const spawnArgs: SpawnOptions = {
+        windowsHide: true,
+        stdio: [
+            // Standard: stdin, stdout, stderr 
+            'inherit', 'pipe', 'inherit',
+            'pipe'
+        ]
+    };
+
+    await new Promise((res, rej) => {
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+        ffmpeg.on('error', rej);
+        ffmpeg.on('exit', res);
+        ffmpeg.stdout?.on('data', data => {
+            const outTime = (<string>data.toString('utf-8')).match(/out_time_ms=(\d+)/)?.[1];
+            const outTimeS = +(outTime ?? 0) / 1000000;
+            emitter?.emit('audio:rawprogress', outTimeS);
+        });
+        audio.pipe(ffmpeg.stdio[3]! as Writable);
     });
 
     return readFile(path).finally(() => unlink(path));

@@ -1,7 +1,7 @@
 import { SupportedMediaUploads as SMU, UploadFileOptions, supportedMediaTypes, uploadMethod } from '../types/file';
 import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
 import { InputFile, MiddlewareFn, MiddlewareObj } from 'grammy';
-import { createPlaceholder, mergeVideo } from '../utils/ffmpeg';
+import { createPlaceholder, downloadAndMergeVideo, downloadAudio } from '../utils/ffmpeg';
 import { YoutubeMedia, YoutubeVideo } from '../types/youtube';
 import { MyContext } from '../types/context';
 import { isCached } from '../utils/ytmedia';
@@ -34,21 +34,25 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         const media = this.cache.get(id);
         const chat_id = ctx.from!.id;
 
-        const result = {
+        // Partially cached
+        if (media) return media;
+
+        const info = await getYoutubeVideoInfo(id);
+        const emitter = new EventEmitter();
+        const newMedia: YoutubeMedia = {
+            ...info,
+            emitter,
+            isCached: 0,
+            isExceeds: !info.simpleFormat && !info.videoFormat,
+            progress: {
+                finished: (t, c) => emitter.once(`${t}:finished`, c),
+                error: (t, c) => emitter.once(`${t}:error`, c),
+                on: (t, c) => emitter.on(`${t}:progress`, c),
+                once: (t, c) => emitter.once(`${t}:progress`, c)
+            },
             getCached: (t, a) => this.cacheAndGet(ctx, id, t, a),
             downloadOrCached: async t => await this.getCached(id, t) ?? this.download(id, t),
             replyWith: (t, o, c) => this.send(ctx, id, c ?? chat_id, { type: t ?? 'video', ...o }),
-        } as YoutubeVideo;
-
-        // Partially cached
-        if (media) return { ...media, ...result, progress: progress(media.emitter) };
-
-        const info = await getYoutubeVideoInfo(id);
-        const newMedia = {
-            ...info,
-            isExceeds: !info.simpleFormat && !info.videoFormat,
-            isCached: 0,
-            emitter: new EventEmitter()
         };
         this.cache.set(id, newMedia);
 
@@ -57,27 +61,26 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
             this.setFileId(t, id, f);
         };
 
-        newMedia.emitter.once('video:finished', onFinished('video'));
-        newMedia.emitter.once('audio:finished', onFinished('audio'));
+        newMedia.progress.finished('video', onFinished('video'));
+        newMedia.progress.finished('audio', onFinished('audio'));
         newMedia.emitter.on('video:rawprogress', s => {
             newMedia.emitter.emit('video:progress', (+s / +newMedia.duration) * 100);
         });
+        newMedia.emitter.on('audio:rawprogress', s => {
+            newMedia.emitter.emit('audio:progress', (+s / +newMedia.duration) * 100);
+        });
 
         // Not cached
-        return {
-            ...result,
-            ...newMedia,
-            progress: progress(newMedia.emitter)
-        };
+        return newMedia;
     }
 
     private download(id: string, type: SMU = 'video'): InputFile {
         const info = this.cache.get(id);
         if (!info) throw new Error('CacheError');
         if (info.isExceeds) throw new Error('No');
-        if (type == 'audio') return new InputFile(() => downloadSpecificFormat(info.source_url, info.audioFormat));
+        if (type == 'audio') return new InputFile(() => downloadAudio(info));
         if (info.chooseSimple && info.simpleFormat) return new InputFile(() => downloadSpecificFormat(info.source_url, info.simpleFormat!));
-        return new InputFile(() => mergeVideo(info.source_url, info.videoFormat!, info.audioFormat, info.videoId, info.emitter));
+        return new InputFile(() => downloadAndMergeVideo(info));
     }
 
     private async send(ctx: MyContext, id: string, chat_id: number, options: UploadFileOptions<SMU>,) {
@@ -133,8 +136,8 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         }
         if (media.file?.[`${type}_id`] === null && !allowPlaceholder) {
             return new Promise((res, rej) => {
-                media.emitter.once(`${type}:finished`, res);
-                media.emitter.once(`${type}:error`, rej);
+                media.progress.finished(type, res);
+                media.progress.error(type, rej);
             });
         }
         if (allowPlaceholder) {
@@ -163,13 +166,4 @@ async function sendToTelegram<T extends SMU = SMU>(ctx: MyContext, chat_id: numb
     });
     if (options.temp_upload) await ctx.api.deleteMessage(chat_id, message.message_id);
     return message;
-}
-
-function progress(emitter: EventEmitter) {
-    return {
-        finished: (t, c) => emitter.once(`${t}:finished`, c),
-        error: (t, c) => emitter.once(`${t}:error`, c),
-        on: (t, c) => emitter.on(`${t}:progress`, c),
-        once: (t, c) => emitter.once(`${t}:progress`, c)
-    } as YoutubeVideo['progress'];
 }

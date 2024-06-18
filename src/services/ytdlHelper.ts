@@ -1,7 +1,7 @@
 import { SupportedMediaUploads as SMU, UploadFileOptions, supportedMediaTypes, uploadMethod } from '../types/file';
+import { createPlaceholder, downloadAndMergeVideo, downloadAudio } from '../utils/ffmpeg';
 import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
 import { InputFile, MiddlewareFn, MiddlewareObj } from 'grammy';
-import { createPlaceholder, downloadAndMergeVideo, downloadAudio } from '../utils/ffmpeg';
 import { YoutubeMedia, YoutubeVideo } from '../types/youtube';
 import { MyContext } from '../types/context';
 import { isCached } from '../utils/ytmedia';
@@ -34,7 +34,6 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         const media = this.cache.get(id);
         const chat_id = ctx.from!.id;
 
-        // Partially cached
         if (media) return media;
 
         const info = await getYoutubeVideoInfo(id);
@@ -47,8 +46,8 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
             progress: {
                 finished: (t, c) => emitter.once(`${t}:finished`, c),
                 error: (t, c) => emitter.once(`${t}:error`, c),
-                on: (t, c) => emitter.on(`${t}:progress`, c),
-                once: (t, c) => emitter.once(`${t}:progress`, c)
+                on: c => emitter.on('video:progress', c),
+                once: c => emitter.once('video:progress', c)
             },
             getCached: (t, a) => this.cacheAndGet(ctx, id, t, a),
             downloadOrCached: async t => await this.getCached(id, t) ?? this.download(id, t),
@@ -66,11 +65,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         newMedia.emitter.on('video:rawprogress', s => {
             newMedia.emitter.emit('video:progress', (+s / +newMedia.duration) * 100);
         });
-        newMedia.emitter.on('audio:rawprogress', s => {
-            newMedia.emitter.emit('audio:progress', (+s / +newMedia.duration) * 100);
-        });
 
-        // Not cached
         return newMedia;
     }
 

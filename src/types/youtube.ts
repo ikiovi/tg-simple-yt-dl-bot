@@ -16,8 +16,8 @@ export type YoutubeMedia = YoutubeMediaInfo & {
     progress: {
         finished(type: SMU, callback: (value: string) => void): void
         error(type: SMU, callback: (value: string) => void): void
-        once(type: SMU, callback: ProgressEventCallback): void
-        on(type: SMU, callback: ProgressEventCallback): void
+        once(callback: ProgressEventCallback): void
+        on(callback: ProgressEventCallback): void
     }
     downloadOrCached(type?: SMU): Promise<string | InputFile>
     getCached(type?: SMU, allowPlaceholder?: boolean): Promise<string>

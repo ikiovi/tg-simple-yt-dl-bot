@@ -2,7 +2,7 @@ import { downloadSpecificFormat } from '../external/youtube/api';
 import { SpawnOptions, spawn } from 'child_process';
 import { YoutubeMedia } from '../types/youtube';
 import { readFile, unlink } from 'fs/promises';
-import { Readable, Writable } from 'stream';
+import { Writable } from 'stream';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -21,7 +21,7 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         '-i', 'pipe:3',
         '-i', 'pipe:4',
         '-c:v', 'copy',
-        '-c:a', process.env.VIDEO_CONTAINER == 'webm' ? 'copy' : 'aac',
+        '-c:a', 'copy',
         '-map', '0:v',
         '-map', '1:a',
         '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
@@ -53,19 +53,16 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
 }
 
 export async function downloadAudio(media: YoutubeMedia) {
-    const { videoId, source_url, audioFormat, emitter, title, ownerChannelName } = media;
-    const path = join(process.env.TEMP_DIR!, videoId + '.mp3');
-    if (existsSync(path)) return readFile(path);
+    const { source_url, audioFormat, emitter, title, ownerChannelName } = media;
     const audio = downloadSpecificFormat(source_url, audioFormat);
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,
-        '-progress', '-',
         '-i', 'pipe:3',
         '-metadata', `title="${title.replaceAll('"', '')}"`,
         '-metadata', `artist="${ownerChannelName.replaceAll('"', '')}"`,
         '-f', 'mp3',
-        path
+        '-'
     ];
     const spawnArgs: SpawnOptions = {
         windowsHide: true,
@@ -76,19 +73,11 @@ export async function downloadAudio(media: YoutubeMedia) {
         ]
     };
 
-    await new Promise((res, rej) => {
-        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
-        ffmpeg.on('error', rej);
-        ffmpeg.on('exit', res);
-        ffmpeg.stdout?.on('data', data => {
-            const outTime = (<string>data.toString('utf-8')).match(/out_time_ms=(\d+)/)?.[1];
-            const outTimeS = +(outTime ?? 0) / 1000000;
-            emitter?.emit('audio:rawprogress', outTimeS);
-        });
-        audio.pipe(ffmpeg.stdio[3]! as Writable);
-    });
+    const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+    ffmpeg.on('error', e => emitter.emit('audio:error', e));
+    audio.pipe(ffmpeg.stdio[3]! as Writable);
 
-    return readFile(path).finally(() => unlink(path));
+    return ffmpeg.stdout!;
 }
 
 export async function createPlaceholder(format: 'mp3' | 'mpeg') {

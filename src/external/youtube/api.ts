@@ -14,8 +14,8 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
     const simpleFormat = workingFormats.filter(f => f.hasAudio)[0];
 
     const hqAudioFormat = chooseFormat(formats, {
-        filter: 'audioonly',
-        quality: 'highestaudio'
+        filter: f => !f.hasVideo && f.container == (process.env.VIDEO_CONTAINER ?? 'mp4'),
+        quality: 'highest'
     });
 
     const result = {
@@ -31,12 +31,11 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
 
     const onlyVideoFormats = workingFormats.filter(f =>
         f.container === (process.env.VIDEO_CONTAINER ?? 'mp4') &&
-        (process.env.VIDEO_CONTAINER == 'webm' ? f.codecs.startsWith('vp9') : true) &&
+        (process.env.VIDEO_CONTAINER == 'webm' ? f.codecs.startsWith('vp9') : f.codecs.startsWith('avc1')) &&
         !f.hasAudio &&
         +f.contentLength + +hqAudioFormat.contentLength < sizeLimitBytes
     );
     const videoFormat = onlyVideoFormats.filter(isHQFormat)[0] ?? onlyVideoFormats[0];
-
     return {
         videoFormat,
         ...copyObject(result, ytMediaInfoObjTemplate) as YoutubeMediaInfo,

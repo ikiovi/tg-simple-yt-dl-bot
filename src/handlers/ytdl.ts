@@ -29,6 +29,8 @@ ytdlHandler.on(':text', async ctx => {
     return video.replyWith('video');
 });
 
+//TODO: ytdlHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user)
+
 ytdlHandler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
     const video = await ctx.ytdl.get(query);
@@ -82,7 +84,7 @@ ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
     if (!inline_message_id) return logger.error('Unreachable');
 
     let prev = 0;
-    video.progress?.on('video', p => {
+    video.progress?.on(p => {
         const progress = Math.round(p / 25);
         if (progress == prev) return;
         ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard().text('*** '.repeat(progress)) });

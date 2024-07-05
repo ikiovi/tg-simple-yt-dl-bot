@@ -23,10 +23,10 @@ ytdlHandler.on(':text', async ctx => {
         logger.info('Exceeds size limit', { url: video.source_url });
         return ctx.reply('Video size exceeds telegram video limits');
     }
-    if (video.category == 'Music') {
+    if (video.category == 'Music' && ctx.chat.type === 'private') {
         await video.replyWith('audio', { title: video.title, performer: video.ownerChannelName });
     }
-    return video.replyWith('video');
+    return video.replyWith('video', undefined, ctx.chat.id);
 });
 
 //TODO: ytdlHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user)

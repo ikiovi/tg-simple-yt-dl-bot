@@ -1,60 +1,96 @@
-import { copyObject } from '../../utils/object';
-import { YoutubeMediaInfo, ytMediaInfoObjTemplate } from './types';
-import ytdl, { chooseFormat, getInfo, videoFormat } from 'ytdl-core';
+import { VideoFormat, YoutubeMediaInfo } from './types';
+import { downloadChunks, getURLVideoID, validateURL } from '../../utils/ytdl-core';
+import { Constants, FormatUtils, Innertube, Player } from 'youtubei.js';
+import { Readable } from 'stream';
 
 const sizeLimitMB = 50;
 const sizeLimitBytes = sizeLimitMB * (1000 ** 2);
 
 //TODO?: Bypass age restriction
 async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
-    const { videoDetails, formats, } = await getInfo(ytUrl);
-    const { thumbnails, video_url } = videoDetails;
+    const ytdl = await Innertube.create();
+    const info = await ytdl.getBasicInfo(getURLVideoID(ytUrl));
+    const { basic_info: videoDetails, streaming_data } = info;
+    if (videoDetails.is_live) throw new Error('Unable to download livestream');
+    const parseFormat = (f: Parameters<typeof parseInnertubeFormat>[0]) => parseInnertubeFormat(f, ytdl.actions.session.player);
+    const formats = [...streaming_data?.formats ?? [], ...streaming_data?.adaptive_formats ?? []]
+        .filter(f => f.has_video && (f.content_length ?? 0) < sizeLimitBytes)
+        .map(parseFormat)
+        .sort((f1, f2) => isHasGreaterQuality(f1, f2) ? -1 : 1);
+    if (!videoDetails || !videoDetails.id) throw new Error('Invalid video info');
 
-    const workingFormats = formats.filter(f => f.hasVideo && +f.contentLength < sizeLimitBytes);
-    const simpleFormat = workingFormats.filter(f => f.hasAudio)[0];
+    const simpleFormat = formats?.filter(f => f.hasAudio)[0];
+    const hqAudioFormat = parseFormat(info.chooseFormat({ type: 'audio', quality: 'best' }));
 
-    const hqAudioFormat = chooseFormat(formats, {
-        filter: f => !f.hasVideo && f.container == (process.env.VIDEO_CONTAINER ?? 'mp4'),
-        quality: 'highest'
-    });
-
-    const result = {
-        ...videoDetails,
-        source_url: video_url,
-        audioFormat: hqAudioFormat,
-        duration: videoDetails.lengthSeconds,
-        thumbnail_url: thumbnails.pop()!.url,
+    const result: Omit<YoutubeMediaInfo, 'chooseSimple'> = {
+        sourceUrl: ytUrl,
+        videoId: videoDetails.id,
+        title: videoDetails.title!,
+        audioFormat: hqAudioFormat as VideoFormat,
+        ownerChannelName: videoDetails.author!,
+        category: videoDetails.category ?? undefined,
+        duration: videoDetails.duration ?? 0,
         simpleFormat
     };
 
-    if (isHQFormat(simpleFormat)) return { ...result, chooseSimple: true };
+    if (simpleFormat?.isHQ) return { ...result, chooseSimple: true };
 
-    const onlyVideoFormats = workingFormats.filter(f =>
-        f.container === (process.env.VIDEO_CONTAINER ?? 'mp4') &&
-        (process.env.VIDEO_CONTAINER == 'webm' ? f.codecs.startsWith('vp9') : f.codecs.startsWith('avc1')) &&
+    const validVideoFormats = formats?.filter(f =>
+        f.container.includes(process.env.VIDEO_CONTAINER ?? 'mp4') && //?TODO: use different containers to get the best quality within size limit
+        (process.env.VIDEO_CONTAINER == 'webm' ? f.codecs.includes('vp9') : f.codecs.includes('avc1')) &&
         !f.hasAudio &&
-        +f.contentLength + +hqAudioFormat.contentLength < sizeLimitBytes
+        f.contentLength + hqAudioFormat.contentLength < sizeLimitBytes
     );
-    const videoFormat = onlyVideoFormats.filter(isHQFormat)[0] ?? onlyVideoFormats[0];
+    const videoFormat = validVideoFormats?.filter(f => f.isHQ)[0] ?? validVideoFormats?.at(0);
+
     return {
+        ...result,
         videoFormat,
-        ...copyObject(result, ytMediaInfoObjTemplate) as YoutubeMediaInfo,
         chooseSimple: !!simpleFormat && (!videoFormat || isHasGreaterQuality(simpleFormat, videoFormat))
     };
 }
 
-function isHQFormat(format?: videoFormat) {
-    return format && !['tiny', 'small', 'medium'].includes(format.quality.toString());
+function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, player?: Player): VideoFormat {
+    const regex = /video\/(?<container>[^;]+);\s*codecs="(?<codecs>[^"]+)"/;
+    const { container, codecs } = regex.exec(f.mime_type)?.groups ?? {};
+    const result = {
+        hasVideo: f.has_video,
+        hasAudio: f.has_audio,
+        quality: f.quality!,
+        url: f.decipher(player),
+        contentLength: f.content_length!,
+        isHQ: !['tiny', 'small', 'medium'].includes(f.quality!.toString()),
+        isFull: f.has_audio && f.has_video,
+        container,
+        codecs,
+    };
+
+    return {
+        ...result,
+        getReadable: result.isFull && !result.isHQ ?
+            () => directDownload(result.url) :
+            () => downloadChunks(result.url, result.contentLength)
+    };
 }
 
-function isHasGreaterQuality(target: videoFormat, other: videoFormat) {
+function isHasGreaterQuality(target: VideoFormat, other: VideoFormat) {
     const qualities = ['tiny', 'small', 'medium', 'large', 'hd720', 'hd1080', 'hd1440', 'hd2160', 'highres'];
-    return qualities.indexOf(target.quality.toString()) > qualities.indexOf(other.quality.toString());
+    return qualities.indexOf(target.quality.toString()) >= qualities.indexOf(other.quality.toString());
 }
 
-function downloadSpecificFormat(url: string, target: videoFormat | number) {
-    const itag = typeof target == 'number' ? +target : target.itag;
-    return ytdl(url, { filter: f => f.itag == itag });
+async function directDownload(url: string) {
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: Constants.STREAM_HEADERS,
+        redirect: 'follow'
+    });
+
+    // Throw if the response is not 2xx
+    if (!response.ok) throw new Error(response.statusText);
+    const body = response.body;
+    if (!body) throw new Error(response.statusText);
+
+    return Readable.fromWeb(body);
 }
 
-export { getYoutubeVideoInfo, downloadSpecificFormat, sizeLimitBytes };
+export { getYoutubeVideoInfo, getURLVideoID, validateURL, sizeLimitBytes };

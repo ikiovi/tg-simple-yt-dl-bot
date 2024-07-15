@@ -1,19 +1,19 @@
-import { downloadSpecificFormat } from '../external/youtube/api';
 import { SpawnOptions, spawn } from 'child_process';
 import { YoutubeMedia } from '../types/youtube';
 import { readFile, unlink } from 'fs/promises';
 import { Writable } from 'stream';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { logger } from './logger';
 
 const ffmpegGlobalArgs = ['-hide_banner', '-v', 'error'] as const;
 
 export async function downloadAndMergeVideo(media: YoutubeMedia) {
-    const { videoId, source_url, videoFormat, audioFormat, emitter } = media;
+    const { videoId, videoFormat, audioFormat, emitter } = media;
     const path = join(process.env.TEMP_DIR!, videoId);
     if (existsSync(path)) return readFile(path);
-    const video = downloadSpecificFormat(source_url, videoFormat!);
-    const audio = downloadSpecificFormat(source_url, audioFormat);
+    const video = await videoFormat!.getReadable();
+    const audio = await audioFormat.getReadable();
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,
@@ -36,6 +36,11 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         ]
     };
 
+    const mergeStartTime = performance.now();
+    media.progress.finished('video', () => {
+        unlink(path);
+        logger.debug(`Total v:${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
+    });
     await new Promise((res, rej) => {
         const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
         ffmpeg.on('error', rej);
@@ -47,14 +52,19 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         });
         video.pipe(ffmpeg.stdio[3]! as Writable);
         audio.pipe(ffmpeg.stdio[4]! as Writable);
-    });
 
-    return readFile(path).finally(() => unlink(path));
+    }).catch(r => {
+        unlink(path);
+        throw r;
+    });
+    logger.debug(`Merged ${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
+
+    return readFile(path);
 }
 
 export async function downloadAudio(media: YoutubeMedia) {
-    const { source_url, audioFormat, emitter, title, ownerChannelName } = media;
-    const audio = downloadSpecificFormat(source_url, audioFormat);
+    const { audioFormat, emitter, title, ownerChannelName } = media;
+    const audio = await audioFormat.getReadable();
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,

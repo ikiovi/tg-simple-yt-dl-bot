@@ -1,29 +1,27 @@
-import { videoFormat } from 'ytdl-core';
+import { Readable } from 'stream';
 
 export type YoutubeMediaInfo = {
     title: string
     videoId: string
-    source_url: string
-    thumbnail_url: string
+    sourceUrl: string
     ownerChannelName: string
-    duration: string
-    category: string
-    audioFormat: videoFormat
-    simpleFormat?: videoFormat
-    videoFormat?: videoFormat
+    duration: number
+    category?: string
+    audioFormat: VideoFormat
+    simpleFormat?: VideoFormat
+    videoFormat?: VideoFormat
     chooseSimple: boolean
 }
 
-export const ytMediaInfoObjTemplate = {
-    title: '',
-    videoId: '',
-    source_url: '',
-    thumbnail_url: '',
-    ownerChannelName: '',
-    duration: '',
-    category: '',
-    audioFormat: null,
-    simpleFormat: null,
-    videoFormat: null,
-    chooseSimple: false
-} as const;
+export type VideoFormat = {
+    hasVideo: boolean
+    hasAudio: boolean
+    isHQ: boolean
+    isFull: boolean
+    quality: string
+    contentLength: number
+    container: 'mp4' | 'webm' | string
+    codecs: string
+    url: string
+    getReadable: () => Readable | Promise<Readable>
+};

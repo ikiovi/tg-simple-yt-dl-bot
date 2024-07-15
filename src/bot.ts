@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Bot } from 'grammy';
 import { logger } from './utils/logger';
 import { MyContext } from './types/context';
-import { ytdlHandler } from './handlers/ytdl';
+import { ytHandler } from './handlers/yt';
 import { existsSync, mkdirSync } from 'fs';
 import { RunOptions, run, sequentialize } from '@grammyjs/runner';
 import { YTDownloadHelper } from './services/ytdlHelper';
@@ -29,7 +29,7 @@ bot.use(sequentialize(ctx => ctx.from?.id.toString()));
 bot.use(ytHelper);
 
 //#region Register handlers
-bot.use(ytdlHandler);
+bot.use(ytHandler);
 //#endregion
 bot.catch(err => logger.error(err.error));
 

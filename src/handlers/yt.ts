@@ -1,26 +1,26 @@
-import ytdl from 'ytdl-core';
 import { logger } from '../utils/logger';
 import { isCached } from '../utils/ytmedia';
 import { MyContext } from '../types/context';
 import { sequentialize } from '@grammyjs/runner';
 import { SupportedMediaUploads as SMU } from '../types/file';
 import { Composer, InlineKeyboard, InputMediaBuilder } from 'grammy';
+import { getURLVideoID, validateURL } from '../external/youtube/api';
 
-export const ytdlHandler = new Composer<MyContext>();
+export const ytHandler = new Composer<MyContext>();
 
-ytdlHandler.drop(
-    ({ msg, inlineQuery, chosenInlineResult }) => ytdl.validateURL(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? ''),
-    () => { } //? Send message / inlineQueryResult that query is not youtube link ?
+ytHandler.drop(
+    ({ msg, inlineQuery, chosenInlineResult }) => validateURL(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? ''),
+    () => { }
 );
 
-ytdlHandler.use(sequentialize(
-    ({ msg, inlineQuery, chosenInlineResult }) => ytdl.getURLVideoID(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? '')
+ytHandler.use(sequentialize(
+    ({ msg, inlineQuery, chosenInlineResult }) => getURLVideoID(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? '')
 ));
 
-ytdlHandler.on(':text', async ctx => {
+ytHandler.on(':text', async ctx => {
     const video = await ctx.ytdl.get(ctx.msg.text);
     if (video.isExceeds) {
-        logger.info('Exceeds size limit', { url: video.source_url });
+        logger.info('Exceeds size limit', { url: video.sourceUrl });
         return ctx.reply('Video size exceeds telegram video limits');
     }
     if (video.category == 'Music' && ctx.chat.type === 'private') {
@@ -29,27 +29,27 @@ ytdlHandler.on(':text', async ctx => {
     return video.replyWith('video', undefined, ctx.chat.id);
 });
 
-//TODO: ytdlHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user)
+//TODO: ytHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user) + handle age restricted / private video
 
-ytdlHandler.on('inline_query', async ctx => {
+ytHandler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
     const video = await ctx.ytdl.get(query);
 
     if (video.isExceeds) {
-        logger.info('Exceeds size limit', { url: video.source_url });
+        logger.info('Exceeds size limit', { url: video.sourceUrl });
         return await ctx.answerInlineQuery([{
             type: 'article',
             id: video.videoId + '_sl',
             title: 'Video size exceeds telegram video limits',
             input_message_content: {
-                message_text: `Can't download ${video.source_url}. Video size exceeds telegram video limits.`
+                message_text: `Can't download ${video.sourceUrl}. Video size exceeds telegram video limits.`
             }
         }], { cache_time: 0 });
     }
 
     await ctx.ytdl.initPlaceholders(from.id);
     const loadingKeyboard = new InlineKeyboard().text('Loading...');
-    const sourceKeyboard = new InlineKeyboard().url('Source', video.source_url);
+    const sourceKeyboard = new InlineKeyboard().url('Source', video.sourceUrl);
     const vId = (t: SMU, args?: string) => `${video.videoId}${args ?? ''}_${t[0]}${isCached(t, video) || ''}`;
 
     const audioResult = {
@@ -78,21 +78,21 @@ ytdlHandler.on('inline_query', async ctx => {
     await ctx.answerInlineQuery([videoResult, videoNoCaptionResult, audioResult], { cache_time: 0 });
 });
 
-ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
+ytHandler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
     const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
 
     let prev = 0;
     video.progress?.on(p => {
-        const progress = Math.round(p / 25);
+        const progress = Math.round(<number>p / 25);
         if (progress == prev) return;
         ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard().text('*** '.repeat(progress)) });
         prev = progress;
     });
     const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
     const file_id = await video.getCached();
-    const reply_markup = new InlineKeyboard().url('Source', video.source_url);
+    const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
     await ctx.api.editMessageMediaInline(
         inline_message_id,
         InputMediaBuilder.video(file_id, { caption }),
@@ -100,7 +100,7 @@ ytdlHandler.chosenInlineResult(/_v$/, async ctx => {
     );
 });
 
-ytdlHandler.chosenInlineResult(/_a$/, async ctx => {
+ytHandler.chosenInlineResult(/_a$/, async ctx => {
     const { inline_message_id, query } = ctx.chosenInlineResult;
     const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');

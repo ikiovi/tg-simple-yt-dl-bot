@@ -1,14 +1,16 @@
 import { SupportedMediaUploads as SMU, UploadFileOptions, supportedMediaTypes, uploadMethod } from '../types/file';
 import { createPlaceholder, downloadAndMergeVideo, downloadAudio } from '../utils/ffmpeg';
-import { downloadSpecificFormat, getYoutubeVideoInfo } from '../external/youtube/api';
+import { getURLVideoID, getYoutubeVideoInfo } from '../external/youtube/api';
 import { InputFile, MiddlewareFn, MiddlewareObj } from 'grammy';
 import { YoutubeMedia, YoutubeVideo } from '../types/youtube';
 import { MyContext } from '../types/context';
 import { isCached } from '../utils/ytmedia';
-import { getURLVideoID } from 'ytdl-core';
 import TTLCache from '@isaacs/ttlcache';
 import { Message } from 'grammy/types';
 import EventEmitter from 'events';
+
+//? It's service because it modifies context
+//? Could be middleware but it is also responsible for cache, so let it be service
 
 export class YTDownloadHelper implements MiddlewareObj<MyContext> {
     private readonly cache: TTLCache<string, YoutubeMedia>;
@@ -36,7 +38,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
 
         if (media) return media;
 
-        const info = await getYoutubeVideoInfo(id);
+        const info = await getYoutubeVideoInfo(video);
         const emitter = new EventEmitter();
         const newMedia: YoutubeMedia = {
             ...info,
@@ -69,13 +71,14 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         return newMedia;
     }
 
-    private download(id: string, type: SMU = 'video'): InputFile {
+    private async download(id: string, type: SMU = 'video'): Promise<InputFile> {
         const info = this.cache.get(id);
         if (!info) throw new Error('CacheError');
         if (info.isExceeds) throw new Error('No');
         if (type == 'audio') return new InputFile(() => downloadAudio(info));
-        if (info.chooseSimple && info.simpleFormat) return new InputFile(() => downloadSpecificFormat(info.source_url, info.simpleFormat!));
-        return new InputFile(() => downloadAndMergeVideo(info));
+        if (info.chooseSimple && info.simpleFormat) return new InputFile(() => info.simpleFormat!.getReadable());
+        const file = await downloadAndMergeVideo(info);
+        return new InputFile(file);
     }
 
     private async send(ctx: MyContext, id: string, chat_id: number, options: UploadFileOptions<SMU>,) {
@@ -83,10 +86,10 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         const media = this.cache.get(id);
         if (!media) throw new Error('CacheError');
         const cached = await this.getCached(id, type);
-        const task = sendToTelegram(ctx, chat_id, cached ?? this.download(id, type), options);
+        const task = sendToTelegram(ctx, chat_id, cached ?? await this.download(id, type), options);
         if (cached) return task;
 
-        this.setFileId(type, id, null); // Indicates that file is already being uploaded
+        this.setFileId(type, id, null); // null - indicates that file is already downloading
         return task.then(msg => {
             media?.emitter.emit(`${type}:finished`, msg[type]!.file_id);
             return msg;

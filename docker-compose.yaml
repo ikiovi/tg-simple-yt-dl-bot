@@ -10,7 +10,4 @@ services:
         env_file: .env
         environment:
             - LOG_LEVEL=warn
-            # Requires domain or static IP, because requests will come directly from Telegram. 
-            # If empty - will use empty video as placeholder.
-            # https://example.co/2gif or http://127.0.0.1:8080/2gif
-            - GIF_GENERATOR_ADDRESS=
+            - DISABLE_LOG_TIMESTAMP=false

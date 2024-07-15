@@ -15,7 +15,7 @@ export type YoutubeMedia = YoutubeMediaInfo & {
     }
     progress: {
         finished(type: SMU, callback: (value: string) => void): void
-        error(type: SMU, callback: (value: string) => void): void
+        error(type: SMU, callback: (value: unknown) => void): void
         once(callback: ProgressEventCallback): void
         on(callback: ProgressEventCallback): void
     }

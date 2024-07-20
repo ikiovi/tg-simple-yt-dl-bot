@@ -82,17 +82,18 @@ ytHandler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
     const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
+    const file_id = await video.getCached();
+    const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
+    const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
 
     let prev = 0;
     video.progress?.on(p => {
-        const progress = Math.round(<number>p / 25);
+        const progress = Math.round(p / 25);
         if (progress == prev) return;
         ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard().text('*** '.repeat(progress)) });
         prev = progress;
     });
-    const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
-    const file_id = await video.getCached();
-    const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
+
     await ctx.api.editMessageMediaInline(
         inline_message_id,
         InputMediaBuilder.video(file_id, { caption }),

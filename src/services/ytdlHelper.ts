@@ -86,7 +86,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         const media = this.cache.get(id);
         if (!media) throw new Error('CacheError');
         const cached = await this.getCached(id, type);
-        const task = sendToTelegram(ctx, chat_id, cached ?? await this.download(id, type), options);
+        const task = sendToTelegram(ctx, chat_id, cached ?? this.download(id, type), options);
         if (cached) return task;
 
         this.setFileId(type, id, null); // null - indicates that file is already downloading
@@ -95,7 +95,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
             return msg;
         }).catch(r => {
             this.setFileId(type, id, undefined);
-            throw r;
+            throw new Error(r?.message);
         });
     }
 
@@ -156,9 +156,10 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
     }
 }
 
-async function sendToTelegram<T extends SMU = SMU>(ctx: MyContext, chat_id: number, file: InputFile | string, options: UploadFileOptions<T>) {
+type MaybePromise<T> = T | Promise<T>;
+async function sendToTelegram<T extends SMU = SMU>(ctx: MyContext, chat_id: number, file: MaybePromise<InputFile | string>, options: UploadFileOptions<T>) {
     const method = uploadMethod[options.type];
-    const message: Message = await ctx.api[method](chat_id, file, {
+    const message: Message = await ctx.api[method](chat_id, await file, {
         ...options,
         supports_streaming: true
     });

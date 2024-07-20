@@ -1,6 +1,7 @@
 import { VideoFormat, YoutubeMediaInfo } from './types';
-import { downloadChunks, getURLVideoID, validateURL } from '../../utils/ytdl-core';
+import { getURLVideoID, validateURL } from '../../utils/ytdl-core';
 import { Constants, FormatUtils, Innertube, Player } from 'youtubei.js';
+import { downloadChunks } from '../../utils/download';
 import { Readable } from 'stream';
 
 const sizeLimitMB = 50;
@@ -11,8 +12,9 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
     const ytdl = await Innertube.create();
     const info = await ytdl.getBasicInfo(getURLVideoID(ytUrl));
     const { basic_info: videoDetails, streaming_data } = info;
+    const parseFormat = (f: Parameters<typeof parseInnertubeFormat>[0]) => parseInnertubeFormat(f, ytdl.session.player);
     if (videoDetails.is_live) throw new Error('Unable to download livestream');
-    const parseFormat = (f: Parameters<typeof parseInnertubeFormat>[0]) => parseInnertubeFormat(f, ytdl.actions.session.player);
+
     const formats = [...streaming_data?.formats ?? [], ...streaming_data?.adaptive_formats ?? []]
         .filter(f => f.has_video && (f.content_length ?? 0) < sizeLimitBytes)
         .map(parseFormat)
@@ -85,10 +87,8 @@ async function directDownload(url: string) {
         redirect: 'follow'
     });
 
-    // Throw if the response is not 2xx
-    if (!response.ok) throw new Error(response.statusText);
     const body = response.body;
-    if (!body) throw new Error(response.statusText);
+    if (!response.ok || !body) throw new Error(response.statusText);
 
     return Readable.fromWeb(body);
 }

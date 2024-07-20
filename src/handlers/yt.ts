@@ -82,7 +82,6 @@ ytHandler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
     const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
-    const file_id = await video.getCached();
     const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
     const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
 
@@ -96,7 +95,7 @@ ytHandler.chosenInlineResult(/_v$/, async ctx => {
 
     await ctx.api.editMessageMediaInline(
         inline_message_id,
-        InputMediaBuilder.video(file_id, { caption }),
+        InputMediaBuilder.video(await video.getCached(), { caption }),
         { reply_markup }
     );
 });

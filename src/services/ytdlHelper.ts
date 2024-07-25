@@ -95,7 +95,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
             return msg;
         }).catch(r => {
             this.setFileId(type, id, undefined);
-            throw new Error(r?.message);
+            throw new Error(r);
         });
     }
 

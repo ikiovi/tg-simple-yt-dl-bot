@@ -1,3 +1,6 @@
+# Windows executables
+*.exe
+
 # Logs
 logs
 *.log

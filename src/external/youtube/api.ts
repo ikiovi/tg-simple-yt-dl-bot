@@ -1,8 +1,7 @@
 import { VideoFormat, YoutubeMediaInfo } from './types';
 import { getURLVideoID, validateURL } from '../../utils/ytdl-core';
-import { Constants, FormatUtils, Innertube, Player } from 'youtubei.js';
-import { downloadChunks } from '../../utils/download';
-import { Readable } from 'stream';
+import { FormatUtils, Innertube, Player } from 'youtubei.js';
+import { getDownloadUrls } from '../../utils/yt-dlp';
 
 const sizeLimitMB = 50;
 const sizeLimitBytes = sizeLimitMB * (1000 ** 2);
@@ -35,7 +34,10 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
         simpleFormat
     };
 
-    if (simpleFormat?.isHQ) return { ...result, chooseSimple: true };
+    if (simpleFormat?.isHQ) {
+        fixFormats(ytUrl, await getBrokenFormats(simpleFormat, hqAudioFormat));
+        return { ...result, chooseSimple: true };
+    }
 
     const validVideoFormats = formats?.filter(f =>
         f.container.includes(process.env.VIDEO_CONTAINER ?? 'mp4') && //?TODO: use different containers to get the best quality within size limit
@@ -44,18 +46,22 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
         f.contentLength + hqAudioFormat.contentLength < sizeLimitBytes
     );
     const videoFormat = validVideoFormats?.filter(f => f.isHQ)[0] ?? validVideoFormats?.at(0);
+    const chooseSimple = !!simpleFormat && (!videoFormat || isHasGreaterQuality(simpleFormat, videoFormat));
+
+    fixFormats(ytUrl, await getBrokenFormats(chooseSimple ? simpleFormat : videoFormat, hqAudioFormat));
 
     return {
         ...result,
         videoFormat,
-        chooseSimple: !!simpleFormat && (!videoFormat || isHasGreaterQuality(simpleFormat, videoFormat))
+        chooseSimple
     };
 }
 
 function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, player?: Player): VideoFormat {
     const regex = /video\/(?<container>[^;]+);\s*codecs="(?<codecs>[^"]+)"/;
     const { container, codecs } = regex.exec(f.mime_type)?.groups ?? {};
-    const result = {
+    return new VideoFormat({
+        itag: f.itag,
         hasVideo: f.has_video,
         hasAudio: f.has_audio,
         quality: f.quality!,
@@ -65,14 +71,7 @@ function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, pl
         isFull: f.has_audio && f.has_video,
         container,
         codecs,
-    };
-
-    return {
-        ...result,
-        getReadable: result.isFull && !result.isHQ ?
-            () => directDownload(result.url) :
-            () => downloadChunks(result.url, result.contentLength)
-    };
+    });
 }
 
 function isHasGreaterQuality(target: VideoFormat, other: VideoFormat) {
@@ -80,17 +79,21 @@ function isHasGreaterQuality(target: VideoFormat, other: VideoFormat) {
     return qualities.indexOf(target.quality.toString()) >= qualities.indexOf(other.quality.toString());
 }
 
-async function directDownload(url: string) {
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: Constants.STREAM_HEADERS,
-        redirect: 'follow'
+async function getBrokenFormats(...formats: VideoFormat[]) {
+    const formatsTest = await Promise.all(formats.map(f => f.testUrl()));
+    return formats.filter((_, i) => !formatsTest[i]);
+}
+
+async function fixFormats(source: string, brokenFormats: VideoFormat[]) {
+    if (!brokenFormats.length) return;
+
+    const urls = await getDownloadUrls(source, brokenFormats.map(f => f.itag)).catch(err => {
+        brokenFormats.forEach(f => f.resolver(err));
     });
-
-    const body = response.body;
-    if (!response.ok || !body) throw new Error(response.statusText);
-
-    return Readable.fromWeb(body);
+    if (!urls) return;
+    for (let i = 0; i < brokenFormats.length; i++) {
+        brokenFormats[i].url = urls[i]?.trim();
+    }
 }
 
 export { getYoutubeVideoInfo, getURLVideoID, validateURL, sizeLimitBytes };

@@ -12,8 +12,7 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
     const { videoId, videoFormat, audioFormat, emitter } = media;
     const path = join(process.env.TEMP_DIR!, videoId);
     if (existsSync(path)) return readFile(path);
-    const video = await videoFormat!.getReadable();
-    const audio = await audioFormat.getReadable();
+    const [video, audio] = await Promise.all([videoFormat!.getReadable(), audioFormat.getReadable()]);
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,

@@ -11,6 +11,7 @@ const token = process.env.TOKEN;
 if (!token) throw new Error('TOKEN must be provided!');
 if (!process.env.TEMP_DIR) throw new Error('TEMP_DIR must be provided!');
 if (!process.env.FFMPEG_PATH) throw new Error('FFMPEG_PATH must be provided!');
+if (process.env.ALLOW_YTDLP_FALLBACK && !process.env.YTDLP_PATH) throw new Error('YTDLP_PATH must be provided if fallback is allowed');
 
 const bot = new Bot<MyContext>(token);
 const ytHelper = new YTDownloadHelper(

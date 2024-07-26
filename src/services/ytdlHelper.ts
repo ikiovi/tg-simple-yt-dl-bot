@@ -38,7 +38,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
 
         if (media) return media;
 
-        const info = await getYoutubeVideoInfo(video);
+        const info = await getYoutubeVideoInfo(id);
         const emitter = new EventEmitter();
         const newMedia: YoutubeMedia = {
             ...info,

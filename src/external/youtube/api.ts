@@ -1,16 +1,15 @@
 import { VideoFormat, YoutubeMediaInfo } from './types';
 import { getURLVideoID, validateURL } from '../../utils/ytdl-core';
 import { Constants, FormatUtils, Innertube, Player } from 'youtubei.js';
-import { downloadChunks } from '../../utils/download';
-import { Readable } from 'stream';
+import { download } from '../../utils/download';
 
 const sizeLimitMB = 50;
 const sizeLimitBytes = sizeLimitMB * (1000 ** 2);
 
 //TODO?: Bypass age restriction
-async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
+async function getYoutubeVideoInfo(id: string): Promise<YoutubeMediaInfo> {
     const ytdl = await Innertube.create();
-    const info = await ytdl.getBasicInfo(getURLVideoID(ytUrl));
+    const info = await ytdl.getBasicInfo(id, 'iOS');
     const { basic_info: videoDetails, streaming_data } = info;
     const parseFormat = (f: Parameters<typeof parseInnertubeFormat>[0]) => parseInnertubeFormat(f, ytdl.session.player);
     if (videoDetails.is_live) throw new Error('Unable to download livestream');
@@ -25,7 +24,7 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
     const hqAudioFormat = parseFormat(info.chooseFormat({ type: 'audio', quality: 'best' }));
 
     const result: Omit<YoutubeMediaInfo, 'chooseSimple'> = {
-        sourceUrl: ytUrl,
+        sourceUrl: `https://youtu.be/${id}`,
         videoId: videoDetails.id,
         title: videoDetails.title!,
         audioFormat: hqAudioFormat as VideoFormat,
@@ -55,42 +54,30 @@ async function getYoutubeVideoInfo(ytUrl: string): Promise<YoutubeMediaInfo> {
 function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, player?: Player): VideoFormat {
     const regex = /video\/(?<container>[^;]+);\s*codecs="(?<codecs>[^"]+)"/;
     const { container, codecs } = regex.exec(f.mime_type)?.groups ?? {};
-    const result = {
+    return {
+        codecs,
+        container,
+        quality: f.quality!,
         hasVideo: f.has_video,
         hasAudio: f.has_audio,
-        quality: f.quality!,
         url: f.decipher(player),
         contentLength: f.content_length!,
-        isHQ: !['tiny', 'small', 'medium'].includes(f.quality!.toString()),
         isFull: f.has_audio && f.has_video,
-        container,
-        codecs,
-    };
-
-    return {
-        ...result,
-        getReadable: result.isFull && !result.isHQ ?
-            () => directDownload(result.url) :
-            () => downloadChunks(result.url, result.contentLength)
+        isHQ: !['tiny', 'small', 'medium'].includes(f.quality!.toString()),
+        getReadable() {
+            return download(
+                this.url,
+                this.contentLength,
+                Constants.STREAM_HEADERS,
+                this.isFull && !this.isHQ ? 0 : 10 * 1024 * 1024
+            );
+        }
     };
 }
 
 function isHasGreaterQuality(target: VideoFormat, other: VideoFormat) {
     const qualities = ['tiny', 'small', 'medium', 'large', 'hd720', 'hd1080', 'hd1440', 'hd2160', 'highres'];
     return qualities.indexOf(target.quality.toString()) >= qualities.indexOf(other.quality.toString());
-}
-
-async function directDownload(url: string) {
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: Constants.STREAM_HEADERS,
-        redirect: 'follow'
-    });
-
-    const body = response.body;
-    if (!response.ok || !body) throw new Error(response.statusText);
-
-    return Readable.fromWeb(body);
 }
 
 export { getYoutubeVideoInfo, getURLVideoID, validateURL, sizeLimitBytes };

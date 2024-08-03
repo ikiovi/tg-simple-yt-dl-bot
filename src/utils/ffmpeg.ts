@@ -12,7 +12,8 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
     const { videoId, videoFormat, audioFormat, emitter } = media;
     const path = join(process.env.TEMP_DIR!, videoId);
     if (existsSync(path)) return readFile(path);
-    const [video, audio] = await Promise.all([videoFormat!.getReadable(), audioFormat.getReadable()]);
+    const emitError = (err: Error) => emitter.emit('video:error', err);
+    const [video, audio] = await Promise.all([videoFormat!.getReadable(emitError), audioFormat.getReadable(emitError)]);
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,
@@ -40,7 +41,7 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         unlink(path);
         logger.debug(`Total v:${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
     });
-    await new Promise((res, rej) => {
+    await new Promise<number>((res, rej) => {
         const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
         ffmpeg.on('error', rej);
         ffmpeg.on('exit', res);
@@ -63,13 +64,13 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
 
 export async function downloadAudio(media: YoutubeMedia) {
     const { audioFormat, emitter, title, ownerChannelName } = media;
-    const audio = await audioFormat.getReadable();
+    const audio = await audioFormat.getReadable(err => emitter.emit('audio:error', err));
 
-    const ffmpegArgs = [
+    const ffmpegArgs = [ //TODO: add cover
         ...ffmpegGlobalArgs,
         '-i', 'pipe:3',
-        '-metadata', `title="${title.replaceAll('"', '')}"`,
-        '-metadata', `artist="${ownerChannelName.replaceAll('"', '')}"`,
+        '-metadata', `title='${title.replaceAll('"', '')}'`,
+        '-metadata', `artist='${ownerChannelName.replaceAll('"', '')}'`,
         '-f', 'mp3',
         '-'
     ];

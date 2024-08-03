@@ -72,12 +72,14 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
     }
 
     private async download(id: string, type: SMU = 'video'): Promise<InputFile> {
-        const info = this.cache.get(id);
-        if (!info) throw new Error('CacheError');
-        if (info.isExceeds) throw new Error('No');
-        if (type == 'audio') return new InputFile(() => downloadAudio(info));
-        if (info.chooseSimple && info.simpleFormat) return new InputFile(() => info.simpleFormat!.getReadable());
-        const file = await downloadAndMergeVideo(info);
+        const media = this.cache.get(id);
+        if (!media) throw new Error('CacheError');
+        if (type == 'audio') return new InputFile(() => downloadAudio(media));
+        if (media.chooseSimple && media.simpleFormat) {
+            const simpleFormat = media.simpleFormat!.getReadable(err => media.emitter.emit('video:error', err));
+            return new InputFile(() => simpleFormat);
+        }
+        const file = await downloadAndMergeVideo(media);
         return new InputFile(file);
     }
 
@@ -90,12 +92,15 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         if (cached) return task;
 
         this.setFileId(type, id, null); // null - indicates that file is already downloading
-        return task.then(msg => {
-            media?.emitter.emit(`${type}:finished`, msg[type]!.file_id);
-            return msg;
-        }).catch(r => {
+        return Promise.race<Message>([
+            new Promise((_, rej) => media.progress.error(type, rej)),
+            task.then(msg => {
+                media?.emitter.emit(`${type}:finished`, msg[type]!.file_id);
+                return msg;
+            }),
+        ]).catch(r => {
             this.setFileId(type, id, undefined);
-            throw new Error(r?.message);
+            throw new Error(r);
         });
     }
 

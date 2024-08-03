@@ -2,8 +2,9 @@
 import type { Options } from 'ky';
 import { PassThrough, Readable } from 'stream';
 
-export async function download(url: string, contentLength: number, headers?: Options['headers'], chunkSize = 10 * 1024 * 1024): Promise<Readable> {
-    const stream = new PassThrough({ highWaterMark: 1024 * 512 }).on('error', () => { });
+export type DownloadOptions = { onError?: Parameters<PassThrough['on']>[1], headers?: Options['headers'], chunkSize?: number };
+export async function download(url: string, contentLength: number, options?: DownloadOptions): Promise<Readable> {
+    const stream = new PassThrough({ highWaterMark: 1024 * 512 }).on('error', options?.onError ?? responseError);
     const opts: Options = {
         retry: {
             limit: 3,
@@ -12,15 +13,20 @@ export async function download(url: string, contentLength: number, headers?: Opt
         },
         timeout: 10000,
         redirect: 'follow',
-        headers
+        headers: options?.headers
     };
 
+    const chunkSize = options?.chunkSize ?? 10 * 1024 * 1024;
     const ky = (await import('ky')).default; // 'cause it's ecm-only
     const getNextChunk = async (start: number, end: number) => {
         if (end >= contentLength) end = 0;
         const range = chunkSize == 0 ? '' : `&range=${start}-${end || ''}`;
-        const req = await ky.get(`${url}${range}`, opts).catch(responseError);
-        if (!req?.ok || !req?.body) return Promise.reject();
+        const req = await ky.get(`${url}${range}`, opts)
+            .catch(err => {
+                stream.destroy(err);
+                return err;
+            });
+        if (!req?.ok || !req?.body) return;
         const body = Readable.fromWeb(req.body);
         body.pipe(stream, { end: !end });
         body.once('end', () => {

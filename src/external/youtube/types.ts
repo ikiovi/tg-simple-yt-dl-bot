@@ -1,4 +1,5 @@
 import { Readable } from 'stream';
+import { DownloadOptions } from './download';
 
 export type YoutubeMediaInfo = {
     title: string
@@ -14,6 +15,7 @@ export type YoutubeMediaInfo = {
 }
 
 export type VideoFormat = {
+    itag: number
     hasVideo: boolean
     hasAudio: boolean
     isHQ: boolean
@@ -23,5 +25,5 @@ export type VideoFormat = {
     container: 'mp4' | 'webm' | string
     codecs: string
     url: string
-    getReadable: () => Readable | Promise<Readable>
+    getReadable: (onError?: DownloadOptions['onError']) => Promise<Readable>
 };

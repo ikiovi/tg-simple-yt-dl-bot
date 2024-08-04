@@ -24,7 +24,7 @@ handler.on(':text', async ctx => {
     const ytUrl = (audio?.linksByPlatform.youtube ?? audio?.linksByPlatform.youtubeMusic)?.url;
     if (!ytUrl) return ctx.reply('Looks like this track is not available on YouTube');
     const media = await ctx.ytdl.getMusic(ytUrl, audio!);
-    await media.replyWith();
+    await media.replyWith('audio', undefined, ctx.chat.id);
 });
 
 handler.on('inline_query', async ctx => {

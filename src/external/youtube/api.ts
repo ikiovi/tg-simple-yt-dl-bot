@@ -3,14 +3,13 @@ import { getURLVideoID, validateURL } from '../../utils/ytdl-core';
 import { Constants, FormatUtils, InnerTubeClient, Innertube, Player, UniversalCache } from 'youtubei.js';
 import { download } from './download';
 
-const sizeLimitMB = 50;
+const sizeLimitMB = 50.5;
 const sizeLimitBytes = sizeLimitMB * (1000 ** 2);
 
 //TODO?: Bypass age restriction
-//TODO: Set client from .env
-async function getYoutubeVideoInfo(id: string, client: InnerTubeClient = 'iOS'): Promise<YoutubeMediaInfo> {
+async function getYoutubeVideoInfo(id: string, client?: InnerTubeClient): Promise<YoutubeMediaInfo> {
     const ytdl = await Innertube.create({ cache: new UniversalCache(false) });
-    const info = await ytdl.getBasicInfo(id, client);
+    const info = await ytdl.getBasicInfo(id, client ?? process.env.YT_CLIENT as InnerTubeClient ?? 'iOS');
     const { basic_info: videoDetails, streaming_data, playability_status } = info;
     const parseFormat = (f: Parameters<typeof parseInnertubeFormat>[0]) => parseInnertubeFormat(f, ytdl.session.player);
     if (videoDetails.is_live) throw new Error('Unable to download livestream');

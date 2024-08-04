@@ -5,6 +5,7 @@ import { Writable } from 'stream';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger';
+import { events } from './ytmedia';
 
 const ffmpegGlobalArgs = ['-hide_banner', '-v', 'error'] as const;
 
@@ -12,7 +13,7 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
     const { videoId, videoFormat, audioFormat, emitter } = media;
     const path = join(process.env.TEMP_DIR!, videoId);
     if (existsSync(path)) return readFile(path);
-    const emitError = (err: Error) => emitter.emit('video:error', err);
+    const emitError = (err: Error) => emitter.emit(`video:${events.error}`, err);
     const [video, audio] = await Promise.all([videoFormat!.getReadable(emitError), audioFormat.getReadable(emitError)]);
 
     const ffmpegArgs = [
@@ -20,10 +21,10 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         '-progress', '-',
         '-i', 'pipe:3',
         '-i', 'pipe:4',
-        '-c:v', 'copy',
-        '-c:a', 'copy',
         '-map', '0:v',
         '-map', '1:a',
+        '-c:v', 'copy',
+        '-c:a', 'copy',
         '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
         path
     ];
@@ -37,10 +38,10 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
     };
 
     const mergeStartTime = performance.now();
-    media.progress.finished('video', () => {
-        unlink(path);
+    media.progress.success('video', () => {
         logger.debug(`Total v:${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
     });
+    media.progress.finished('video', () => unlink(path));
     await new Promise<number>((res, rej) => {
         const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
         ffmpeg.on('error', rej);
@@ -48,14 +49,14 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         ffmpeg.stdout?.on('data', data => {
             const outTime = (<string>data.toString('utf-8')).match(/out_time_ms=(\d+)/)?.[1];
             const outTimeS = +(outTime ?? 0) / 1000000;
-            emitter?.emit('video:rawprogress', outTimeS);
+            emitter?.emit(`video:${events.rawprogress}`, outTimeS);
         });
         video.pipe(ffmpeg.stdio[3]! as Writable);
         audio.pipe(ffmpeg.stdio[4]! as Writable);
 
-    }).catch(r => {
-        unlink(path);
-        throw r;
+    }).catch(err => {
+        emitter.emit(`video:${events.error}`, err);
+        throw err;
     });
     logger.debug(`Merged ${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
 
@@ -63,16 +64,25 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
 }
 
 export async function downloadAudio(media: YoutubeMedia) {
-    const { audioFormat, emitter, title, ownerChannelName } = media;
-    const audio = await audioFormat.getReadable(err => emitter.emit('audio:error', err));
+    const { videoId, audioFormat, emitter, title, ownerChannelName, thumbnail } = media;
+    const path = join(process.env.TEMP_DIR!, videoId + '_audio');
+    const audio = await audioFormat.getReadable(err => emitter.emit(`audio:${events.error}`, err));
 
-    const ffmpegArgs = [ //TODO: add cover
+    const ffmpegArgs = [
         ...ffmpegGlobalArgs,
         '-i', 'pipe:3',
-        '-metadata', `title='${title.replaceAll('"', '')}'`,
-        '-metadata', `artist='${ownerChannelName.replaceAll('"', '')}'`,
+        ...(thumbnail ? [
+            '-i', thumbnail,
+            '-map', '0:a',
+            '-map', '1:0',
+            '-id3v2_version', '3',
+            '-metadata:s:v', 'title=Album cover',
+            '-metadata:s:v', 'comment=Cover (front)',
+        ] : []),
+        '-metadata', `title=${title}`,
+        '-metadata', `artist=${ownerChannelName}`,
         '-f', 'mp3',
-        '-'
+        path
     ];
     const spawnArgs: SpawnOptions = {
         windowsHide: true,
@@ -83,11 +93,19 @@ export async function downloadAudio(media: YoutubeMedia) {
         ]
     };
 
-    const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
-    ffmpeg.on('error', e => emitter.emit('audio:error', e));
-    audio.pipe(ffmpeg.stdio[3]! as Writable);
+    media.progress.finished('audio', () => unlink(path));
+    await new Promise<number>((res, rej) => {
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+        ffmpeg.on('error', rej);
+        ffmpeg.on('exit', res);
+        audio.pipe(ffmpeg.stdio[3]! as Writable);
 
-    return ffmpeg.stdout!;
+    }).catch(err => {
+        emitter.emit(`audio:${events.error}`, err);
+        throw err;
+    });
+
+    return readFile(path);
 }
 
 export async function createPlaceholder(format: 'mp3' | 'mpeg') {

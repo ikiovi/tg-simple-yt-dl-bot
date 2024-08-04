@@ -2,10 +2,12 @@ import 'dotenv/config';
 import { Bot } from 'grammy';
 import { logger } from './utils/logger';
 import { MyContext } from './types/context';
-import { ytHandler } from './handlers/yt';
+import { ytRoute } from './handlers/yt';
 import { existsSync, mkdirSync } from 'fs';
 import { RunOptions, run, sequentialize } from '@grammyjs/runner';
 import { YTDownloadHelper } from './services/ytdlHelper';
+import { createRoutingSet } from './utils/routeing';
+import { musicRoute } from './handlers/music';
 
 const token = process.env.TOKEN;
 if (!token) throw new Error('TOKEN must be provided!');
@@ -28,9 +30,9 @@ bot.command('ping', ctx => ctx.reply('pong')); // To check if bot is alive ¯\_(
 bot.use(sequentialize(ctx => ctx.from?.id.toString()));
 bot.use(ytHelper);
 
-//#region Register handlers
-bot.use(ytHandler);
-//#endregion
+const { router, handlers } = createRoutingSet(ytRoute, musicRoute);
+bot.route(router, handlers);
+
 bot.catch(err => logger.error(err.error));
 
 const fetch = { allowed_updates: ['inline_query', 'message', 'callback_query', 'chosen_inline_result'] };

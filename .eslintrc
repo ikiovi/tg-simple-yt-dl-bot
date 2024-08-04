@@ -19,6 +19,7 @@
         "quotes": ["error", "single"],
         "@typescript-eslint/no-non-null-assertion":"off",
         "@typescript-eslint/no-unused-vars":"warn",
-        "no-constant-condition":"warn"
+        "no-constant-condition":"warn",
+        "no-console":"warn"
   }
 }

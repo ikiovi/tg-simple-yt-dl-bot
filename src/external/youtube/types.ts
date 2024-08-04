@@ -8,6 +8,7 @@ export type YoutubeMediaInfo = {
     ownerChannelName: string
     duration: number
     category?: string
+    thumbnail?: string
     audioFormat: VideoFormat
     simpleFormat?: VideoFormat
     videoFormat?: VideoFormat
@@ -22,6 +23,7 @@ export type VideoFormat = {
     isFull: boolean
     quality: string
     contentLength: number
+    aspectRatio: number
     container: 'mp4' | 'webm' | string
     codecs: string
     url: string

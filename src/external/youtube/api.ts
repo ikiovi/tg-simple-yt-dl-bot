@@ -32,6 +32,7 @@ async function getYoutubeVideoInfo(id: string, client?: InnerTubeClient): Promis
         ownerChannelName: videoDetails.author!,
         category: videoDetails.category ?? undefined,
         duration: videoDetails.duration ?? 0,
+        thumbnail: `https://i.ytimg.com/vi/${id}/${formats[0].aspectRatio < 1 ? 'frame0' : 'hqdefault'}.jpg`,
         simpleFormat
     };
 
@@ -65,6 +66,7 @@ function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, pl
         url: f.decipher(player),
         contentLength: f.content_length!,
         isFull: f.has_audio && f.has_video,
+        aspectRatio: calculateAspectRatio(f.width!, f.height!),
         isHQ: !['tiny', 'small', 'medium'].includes(f.quality!.toString()),
         getReadable(onError) {
             return download(this.url, this.contentLength, {
@@ -79,6 +81,10 @@ function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, pl
 function isHasGreaterQuality(target: VideoFormat, other: VideoFormat) {
     const qualities = ['tiny', 'small', 'medium', 'large', 'hd720', 'hd1080', 'hd1440', 'hd2160', 'highres'];
     return qualities.indexOf(target.quality.toString()) >= qualities.indexOf(other.quality.toString());
+}
+
+function calculateAspectRatio(width: number, height: number) {
+    return +((width / height) || 0).toFixed(1);
 }
 
 export { getYoutubeVideoInfo, getURLVideoID, validateURL, sizeLimitBytes };

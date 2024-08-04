@@ -1,23 +1,19 @@
 import { logger } from '../utils/logger';
 import { isCached } from '../utils/ytmedia';
-import { MyContext } from '../types/context';
 import { sequentialize } from '@grammyjs/runner';
 import { SupportedMediaUploads as SMU } from '../types/file';
-import { Composer, InlineKeyboard, InputMediaBuilder } from 'grammy';
+import { InlineKeyboard, InputMediaBuilder } from 'grammy';
 import { getURLVideoID, validateURL } from '../external/youtube/api';
+import { createRoute, queryFilter } from '../utils/routeing';
 
-export const ytHandler = new Composer<MyContext>();
+export const ytRoute = createRoute(queryFilter(validateURL));
+const { handler } = ytRoute;
 
-ytHandler.drop(
-    ({ msg, inlineQuery, chosenInlineResult }) => validateURL(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? ''),
-    () => { }
-);
-
-ytHandler.use(sequentialize(
+handler.use(sequentialize(
     ({ msg, inlineQuery, chosenInlineResult }) => getURLVideoID(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? '')
 ));
 
-ytHandler.on(':text', async ctx => {
+handler.on(':text', async ctx => {
     const video = await ctx.ytdl.get(ctx.msg.text);
     if (video.isExceeds) {
         logger.info('Exceeds size limit', { url: video.sourceUrl });
@@ -31,7 +27,7 @@ ytHandler.on(':text', async ctx => {
 
 //TODO: ytHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user) + handle age restricted / private video
 
-ytHandler.on('inline_query', async ctx => {
+handler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
     const video = await ctx.ytdl.get(query);
 
@@ -78,10 +74,11 @@ ytHandler.on('inline_query', async ctx => {
     await ctx.answerInlineQuery([videoResult, videoNoCaptionResult, audioResult], { cache_time: 0 });
 });
 
-ytHandler.chosenInlineResult(/_v$/, async ctx => {
+handler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
-    const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
+
+    const video = await ctx.ytdl.get(query);
     const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
     const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
 
@@ -100,10 +97,11 @@ ytHandler.chosenInlineResult(/_v$/, async ctx => {
     );
 });
 
-ytHandler.chosenInlineResult(/_a$/, async ctx => {
+handler.chosenInlineResult(/_a$/, async ctx => {
     const { inline_message_id, query } = ctx.chosenInlineResult;
-    const video = await ctx.ytdl.get(query);
     if (!inline_message_id) return logger.error('Unreachable');
+
+    const video = await ctx.ytdl.get(query);
 
     const file_id = await video.getCached('audio');
     await ctx.api.editMessageMediaInline(

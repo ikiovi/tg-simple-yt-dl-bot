@@ -69,6 +69,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
 
         newMedia.progress.success('video', onFinished('video'));
         newMedia.progress.success('audio', onFinished('audio'));
+        newMedia.progress.finished('video', () => emitter.removeAllListeners(`video:${events.progress}`));
         newMedia.emitter.on(`video:${events.rawprogress}`, s => {
             newMedia.emitter.emit(`video:${events.progress}`, (+s / +newMedia.duration) * 100);
         });

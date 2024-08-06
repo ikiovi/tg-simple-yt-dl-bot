@@ -23,6 +23,9 @@ async function getYoutubeVideoInfo(id: string, client?: InnerTubeClient): Promis
 
     const simpleFormat = formats?.filter(f => f.hasAudio)[0];
     const hqAudioFormat = parseFormat(info.chooseFormat({ type: 'audio', quality: 'best' }));
+    const thumbnail = formats[0].aspectRatio < 1 ?
+        `https://i.ytimg.com/vi/${id}/frame0.jpg` :
+        videoDetails?.thumbnail?.[0].url;
 
     const result: Omit<YoutubeMediaInfo, 'chooseSimple'> = {
         sourceUrl: `https://youtu.be/${id}`,
@@ -32,8 +35,8 @@ async function getYoutubeVideoInfo(id: string, client?: InnerTubeClient): Promis
         ownerChannelName: videoDetails.author!,
         category: videoDetails.category ?? undefined,
         duration: videoDetails.duration ?? 0,
-        thumbnail: `https://i.ytimg.com/vi/${id}/${formats[0].aspectRatio < 1 ? 'frame0' : 'hqdefault'}.jpg`,
-        simpleFormat
+        simpleFormat,
+        thumbnail
     };
 
     if (simpleFormat?.isHQ) return { ...result, chooseSimple: true };

@@ -23,8 +23,7 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         '-i', 'pipe:4',
         '-map', '0:v',
         '-map', '1:a',
-        '-c:v', 'copy',
-        '-c:a', 'copy',
+        '-c', 'copy',
         '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
         path
     ];

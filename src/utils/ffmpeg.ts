@@ -1,18 +1,23 @@
-import { SpawnOptions, spawn } from 'child_process';
+import { YoutubeMediaInfo } from '../external/youtube/types';
+import { IOType, SpawnOptions, spawn } from 'child_process';
 import { YoutubeMedia } from '../types/youtube';
 import { readFile, unlink } from 'fs/promises';
-import { Writable } from 'stream';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { logger } from './logger';
+import { createReadStream } from 'fs';
 import { events } from './ytmedia';
+import { Writable } from 'stream';
+import { logger } from './logger';
+import { join } from 'path';
 
-const ffmpegGlobalArgs = ['-hide_banner', '-v', 'error'] as const;
+const ffmpegGlobalArgs = ['-hide_banner', '-v', 'error'];
+if (process.env.FFMPEG_MAX_ALLOC_B) ffmpegGlobalArgs.push('-max_alloc', process.env.FFMPEG_MAX_ALLOC_B);
+const getSpawnArgs = (...stdio: IOType[]) => (<SpawnOptions>{
+    windowsHide: true,
+    stdio: ['inherit', 'pipe', 'inherit', ...stdio]
+});
 
-export async function downloadAndMergeVideo(media: YoutubeMedia) {
-    const { videoId, videoFormat, audioFormat, emitter } = media;
-    const path = join(process.env.TEMP_DIR!, videoId);
-    if (existsSync(path)) return readFile(path);
+export async function downloadAndMerge(media: YoutubeMedia) {
+    const { uid, videoFormat, audioFormat, emitter, range } = media;
+    const path = join(process.env.TEMP_DIR!, uid);
     const emitError = (err: Error) => emitter.emit(`video:${events.error}`, err);
     const [video, audio] = await Promise.all([videoFormat!.getReadable(emitError), audioFormat.getReadable(emitError)]);
 
@@ -21,51 +26,51 @@ export async function downloadAndMergeVideo(media: YoutubeMedia) {
         '-progress', '-',
         '-i', 'pipe:3',
         '-i', 'pipe:4',
+        ...(!range ? [] : getTimestampArgs(range)),
         '-map', '0:v',
         '-map', '1:a',
         '-c', 'copy',
-        '-f', process.env.VIDEO_CONTAINER ?? 'mp4',
-        path
+        '-f', 'mp4',
+        path + (range ? '_rc' : '')
     ];
-    const spawnArgs: SpawnOptions = {
-        windowsHide: true,
-        stdio: [
-            // Standard: stdin, stdout, stderr 
-            'inherit', 'pipe', 'inherit',
-            'pipe', 'pipe'
-        ]
-    };
 
     const mergeStartTime = performance.now();
     media.progress.success('video', () => {
-        logger.debug(`Total v:${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
+        logger.debug(`Total v:${uid} in ${(performance.now() - mergeStartTime) / 1000}`);
     });
-    media.progress.finished('video', () => unlink(path));
+    media.progress.finished('video', () => {
+        unlink(path + '_rc').catch(() => { });
+        unlink(path).catch(() => { });
+    });
+    const onError = (err: Error) => {
+        emitError(err);
+        throw err;
+    };
+    const onProgress = (data: Buffer) => {
+        const outTime = (<string>data.toString('utf-8')).match(/out_time_ms=(\d+)/)?.[1];
+        const outTimeS = (+(outTime ?? 0) / 1000000);
+        emitter?.emit(`video:${events.rawprogress}`, outTimeS);
+    };
     await new Promise<number>((res, rej) => {
-        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, getSpawnArgs('pipe', 'pipe'));
         ffmpeg.on('error', rej);
         ffmpeg.on('exit', res);
-        ffmpeg.stdout?.on('data', data => {
-            const outTime = (<string>data.toString('utf-8')).match(/out_time_ms=(\d+)/)?.[1];
-            const outTimeS = +(outTime ?? 0) / 1000000;
-            emitter?.emit(`video:${events.rawprogress}`, outTimeS);
-        });
+        ffmpeg.stdout?.on('data', onProgress);
         video.pipe(ffmpeg.stdio[3]! as Writable);
         audio.pipe(ffmpeg.stdio[4]! as Writable);
 
-    }).catch(err => {
-        emitter.emit(`video:${events.error}`, err);
-        throw err;
-    });
-    logger.debug(`Merged ${videoId} in ${(performance.now() - mergeStartTime) / 1000}`);
+    }).catch(onError);
+    if (range) await trimPrecise(path, { format: 'mp4', timeRange: range }).catch(onError);
+    logger.debug(`Merged ${uid} in ${(performance.now() - mergeStartTime) / 1000}`);
 
-    return readFile(path);
+    return createReadStream(path).on('error', emitError);
 }
 
 export async function downloadAudio(media: YoutubeMedia) {
-    const { videoId, audioFormat, emitter, title, ownerChannelName, thumbnail } = media;
+    const { videoId, audioFormat, emitter, title, ownerChannelName, thumbnail, range } = media;
     const path = join(process.env.TEMP_DIR!, videoId + '_audio');
-    const audio = await audioFormat.getReadable(err => emitter.emit(`audio:${events.error}`, err));
+    const emitError = (err: Error) => emitter.emit(`audio:${events.error}`, err);
+    const audio = await audioFormat.getReadable(emitError);
 
     const ffmpegArgs = [
         ...ffmpegGlobalArgs,
@@ -78,33 +83,50 @@ export async function downloadAudio(media: YoutubeMedia) {
             '-metadata:s:v', 'title=Album cover',
             '-metadata:s:v', 'comment=Cover (front)',
         ] : []),
+        ...(!range ? [] : getTimestampArgs(range)),
         '-metadata', `title=${title}`,
         '-metadata', `artist=${ownerChannelName}`,
         '-f', 'mp3',
-        path
+        path + (range ? '_rc' : '')
     ];
-    const spawnArgs: SpawnOptions = {
-        windowsHide: true,
-        stdio: [
-            // Standard: stdin, stdout, stderr 
-            'inherit', 'pipe', 'inherit',
-            'pipe'
-        ]
-    };
 
-    media.progress.finished('audio', () => unlink(path));
+    media.progress.finished('audio', () => {
+        if (range) unlink(path + '_rc').catch(() => { });
+        unlink(path).catch(() => { });
+    });
+    const onError = (err: Error) => {
+        emitError(err);
+        throw err;
+    };
     await new Promise<number>((res, rej) => {
-        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, spawnArgs);
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, getSpawnArgs('pipe'));
         ffmpeg.on('error', rej);
         ffmpeg.on('exit', res);
         audio.pipe(ffmpeg.stdio[3]! as Writable);
 
-    }).catch(err => {
-        emitter.emit(`audio:${events.error}`, err);
-        throw err;
-    });
+    }).catch(onError);
+    if (range) await trimPrecise(path, { format: 'mp3', timeRange: range }).catch(onError);
 
-    return readFile(path);
+    return createReadStream(path).on('error', emitError);
+}
+
+function trimPrecise(target: string, options: { format: 'mp4' | 'mp3', timeRange: Required<YoutubeMediaInfo>['range'] }) {
+    const { format, timeRange } = options;
+    const ffmpegArgs = [
+        ...ffmpegGlobalArgs,
+        '-progress', '-',
+        ...getTimestampArgs(timeRange, true),
+        '-i', target + '_rc',
+        '-c', 'copy',
+        '-f', format,
+        target
+    ];
+
+    return new Promise<number>((res, rej) => {
+        const ffmpeg = spawn(process.env.FFMPEG_PATH!, ffmpegArgs, getSpawnArgs());
+        ffmpeg.on('error', rej);
+        ffmpeg.on('exit', res);
+    });
 }
 
 export async function createPlaceholder(format: 'mp3' | 'mpeg') {
@@ -137,4 +159,17 @@ export async function createPlaceholder(format: 'mp3' | 'mpeg') {
     });
 
     return readFile(path).finally(() => unlink(path));
+}
+
+function getTimestampArgs(timeRange: Required<YoutubeMediaInfo>['range'], precise = false, padding = 3) {
+    if (precise) return [
+        ...(!timeRange.start ? [] : ['-ss', `${padding}`]),
+        ...(!timeRange.end ? [] : ['-t', `${timeRange.end - (timeRange.start ?? 0)}`]),
+    ];
+    const start = (timeRange.start ?? 0) - padding;
+    const end = (timeRange.end ?? 0) + padding;
+    return [
+        ...(start <= 0 ? [] : ['-ss', `${start}`]),
+        ...(end == padding ? [] : ['-to', `${end}`])
+    ];
 }

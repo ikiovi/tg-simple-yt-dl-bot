@@ -1,16 +1,16 @@
 import { SupportedMediaUploads as SMU, UploadFileOptions, supportedMediaTypes, uploadMethod } from '../types/file';
-import { createPlaceholder, downloadAndMergeVideo, downloadAudio } from '../utils/ffmpeg';
-import { getURLVideoID, getYoutubeVideoInfo } from '../external/youtube/api';
+import { createPlaceholder, downloadAndMerge, downloadAudio } from '../utils/ffmpeg';
+import { VideoOptions, getYoutubeVideoInfo } from '../external/youtube/api';
 import { InputFile, MiddlewareFn, MiddlewareObj } from 'grammy';
 import { YoutubeMedia, YoutubeVideo } from '../types/youtube';
-import { MyContext } from '../types/context';
 import { events, isCached } from '../utils/ytmedia';
+import { getVideoID } from '../utils/ytdl-core';
+import { MyContext } from '../types/context';
+import { hashObject } from '../utils/hash';
+import { logger } from '../utils/logger';
 import TTLCache from '@isaacs/ttlcache';
 import { Message } from 'grammy/types';
 import EventEmitter from 'events';
-import { MusicEntity } from '../external/odesly/types';
-import { logger } from '../utils/logger';
-import { getVideoID } from '../utils/ytdl-core';
 
 //? It's service because it modifies context
 //? Could be middleware but it is also responsible for cache, so let it be service
@@ -27,27 +27,32 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
     middleware(): MiddlewareFn<MyContext> {
         return (ctx, next) => {
             ctx.ytdl = {
-                get: v => this.get(ctx, v),
-                getMusic: (...args) => this.getMusic(ctx, ...args),
+                get: (...args) => this.get(ctx, ...args),
+                getMusic: (audio, options) => this.get(ctx, audio, { ...options, creator: options?.artist }),
                 initPlaceholders: c => this.initPlaceholders(ctx, c)
             };
             return next();
         };
     }
 
-    private async get(ctx: MyContext, video: string): Promise<YoutubeVideo> {
-        const id = getURLVideoID(video);
-        const media = this.cache.get(id);
+    private async get(ctx: MyContext, video: string, options?: Partial<VideoOptions>): Promise<YoutubeVideo> {
+        const id = getVideoID(video);
+        const uid = id + '#' + hashObject(options);
+        const media = this.cache.get(uid);
         const chat_id = ctx.from!.id;
 
         if (media) return media;
 
-        const info = await getYoutubeVideoInfo(id);
+        const info = await getYoutubeVideoInfo(id, options);
         const emitter = new EventEmitter();
         const newMedia: YoutubeMedia = {
             ...info,
+            uid: uid,
             emitter,
             isCached: 0,
+            title: options?.title ?? info.title,
+            ownerChannelName: options?.creator ?? info.ownerChannelName,
+            thumbnail: options?.thumbnail ?? info.thumbnail,
             isExceeds: !info.simpleFormat && !info.videoFormat,
             progress: {
                 success: (t, c) => emitter.once(`${t}:${events.success}`, c),
@@ -56,61 +61,22 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
                 on: c => emitter.on(`video:${events.progress}`, c),
                 once: c => emitter.once(`video:${events.progress}`, c)
             },
-            getCached: (t, a) => this.cacheAndGet(ctx, id, t, a),
-            downloadOrCached: async t => await this.getCached(id, t) ?? this.download(id, t),
-            replyWith: (t, o, c) => this.send(ctx, id, c ?? chat_id, { type: t ?? 'video', ...o }),
+            getCached: (t, a) => this.cacheAndGet(ctx, uid, t, a),
+            downloadOrCached: async t => await this.getCached(uid, t) ?? this.download(uid, t),
+            replyWith: (t, o, c) => this.send(ctx, uid, c ?? chat_id, { type: t ?? 'video', ...o }),
         };
-        this.cache.set(id, newMedia);
+        this.cache.set(uid, newMedia);
 
         const onFinished = (t: SMU) => (f: string) => {
-            this.updateCacheStatus(t, id);
-            this.setFileId(t, id, f);
+            this.updateCacheStatus(t, uid);
+            this.setFileId(t, uid, f);
         };
 
         newMedia.progress.success('video', onFinished('video'));
         newMedia.progress.success('audio', onFinished('audio'));
         newMedia.progress.finished('video', () => emitter.removeAllListeners(`video:${events.progress}`));
         newMedia.emitter.on(`video:${events.rawprogress}`, s => {
-            newMedia.emitter.emit(`video:${events.progress}`, (+s / +newMedia.duration) * 100);
-        });
-
-        return newMedia;
-    }
-
-    private async getMusic(ctx: MyContext, audio: string, options: Omit<MusicEntity, 'linksByPlatform'>) {
-        const id = getVideoID(audio);
-        const uid = id + '+a';
-        const media = this.cache.get(uid);
-        const chat_id = ctx.from!.id;
-
-        if (media) return media;
-
-        const info = await getYoutubeVideoInfo(id);
-        const emitter = new EventEmitter();
-        const newMedia: YoutubeMedia<'audio'> = {
-            ...info,
-            emitter,
-            thumbnail: options.cover ?? info.thumbnail,
-            title: options?.title ?? info.title,
-            ownerChannelName: options?.artist ?? info.ownerChannelName,
-            isCached: 0,
-            isExceeds: !info.simpleFormat && !info.videoFormat,
-            progress: {
-                success: (_, c) => emitter.once(`audio:${events.success}`, c),
-                error: (_, c) => emitter.once(`audio:${events.error}`, c),
-                finished: (_, c) => emitter.once(`audio:${events.finish}`, c),
-                on: () => { },
-                once: () => { }
-            },
-            getCached: (_, a) => this.cacheAndGet(ctx, uid, 'audio', a),
-            downloadOrCached: async () => await this.getCached(uid, 'audio') ?? this.download(uid, 'audio'),
-            replyWith: (_, o, c) => this.send(ctx, uid, c ?? chat_id, { type: 'audio', ...o }),
-        };
-        this.cache.set(uid, newMedia);
-
-        newMedia.progress.success('audio', (f: string) => {
-            this.updateCacheStatus('audio', uid);
-            this.setFileId('audio', uid, f);
+            newMedia.emitter.emit(`video:${events.progress}`, (+s / +newMedia.originDuration) * 100);
         });
 
         return newMedia;
@@ -124,7 +90,7 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
             const simpleFormat = media.simpleFormat!.getReadable(err => media.emitter.emit(`video:${events.error}`, err));
             return new InputFile(() => simpleFormat);
         }
-        const file = await downloadAndMergeVideo(media);
+        const file = await downloadAndMerge(media);
         return new InputFile(file);
     }
 

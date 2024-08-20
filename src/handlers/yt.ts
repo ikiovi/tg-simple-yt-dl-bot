@@ -4,17 +4,24 @@ import { sequentialize } from '@grammyjs/runner';
 import { SupportedMediaUploads as SMU } from '../types/file';
 import { InlineKeyboard, InputMediaBuilder } from 'grammy';
 import { getURLVideoID, validateURL } from '../external/youtube/api';
-import { createRoute, queryFilter } from '../utils/routeing';
+import { createRoute, queryFilter } from '../utils/routing';
+import { getTimeRange, getYtTimestamps } from '../utils/timestamps';
+import { InlineQueryResultCachedVideo } from 'grammy/types';
 
-export const ytRoute = createRoute(queryFilter(validateURL));
-const { handler } = ytRoute;
+export const ytRoute = createRoute(queryFilter(q => {
+    const entities = q.split(' ');
+    return validateURL(entities[0] ?? '');
+}));
+const handler = ytRoute.handler;
 
 handler.use(sequentialize(
     ({ msg, inlineQuery, chosenInlineResult }) => getURLVideoID(msg?.text ?? inlineQuery?.query ?? chosenInlineResult?.query ?? '')
 ));
 
 handler.on(':text', async ctx => {
-    const video = await ctx.ytdl.get(ctx.msg.text);
+    const { text } = ctx.msg;
+    const range = getYtTimestamps(text);
+    const video = await ctx.ytdl.get(text, { range });
     if (video.isExceeds) {
         logger.info('Exceeds size limit', { url: video.sourceUrl });
         return ctx.reply('Video size exceeds telegram video limits');
@@ -29,7 +36,8 @@ handler.on(':text', async ctx => {
 
 handler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
-    const video = await ctx.ytdl.get(query);
+    const range = getTimeRange(query);
+    const video = await ctx.ytdl.get(query, { range });
 
     if (video.isExceeds) {
         logger.info('Exceeds size limit', { url: video.sourceUrl });
@@ -63,13 +71,14 @@ handler.on('inline_query', async ctx => {
         caption: `${video.title}\n${video.ownerChannelName}`,
         video_file_id: await video.getCached('video', true),
         reply_markup: isCached('video', video) ? sourceKeyboard : loadingKeyboard
-    } as const;
+    } as InlineQueryResultCachedVideo;
     const videoNoCaptionResult = {
         ...videoResult,
         id: vId('video', '+nc'),
         title: 'No caption video',
+        description: video.duration != video.originDuration ? `${video.duration - 1}s` : undefined,
         caption: undefined
-    } as const;
+    } as InlineQueryResultCachedVideo;
 
     await ctx.answerInlineQuery([videoResult, videoNoCaptionResult, audioResult], { cache_time: 0 });
 });
@@ -78,7 +87,8 @@ handler.chosenInlineResult(/_v$/, async ctx => {
     const { inline_message_id, result_id, query } = ctx.chosenInlineResult;
     if (!inline_message_id) return logger.error('Unreachable');
 
-    const video = await ctx.ytdl.get(query);
+    const range = getTimeRange(query);
+    const video = await ctx.ytdl.get(query, { range });
     const reply_markup = new InlineKeyboard().url('Source', video.sourceUrl);
     const caption = result_id.includes('+nc') ? undefined : `${video.title}\n${video.ownerChannelName}`;
 
@@ -101,7 +111,8 @@ handler.chosenInlineResult(/_a$/, async ctx => {
     const { inline_message_id, query } = ctx.chosenInlineResult;
     if (!inline_message_id) return logger.error('Unreachable');
 
-    const video = await ctx.ytdl.get(query);
+    const range = getTimeRange(query);
+    const video = await ctx.ytdl.get(query, { range });
 
     const file_id = await video.getCached('audio');
     await ctx.api.editMessageMediaInline(

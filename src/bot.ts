@@ -6,7 +6,7 @@ import { ytRoute } from './handlers/yt';
 import { existsSync, mkdirSync } from 'fs';
 import { RunOptions, run, sequentialize } from '@grammyjs/runner';
 import { YTDownloadHelper } from './services/ytdlHelper';
-import { createRoutingSet } from './utils/routeing';
+import { createRoutingSet } from './utils/routing';
 import { musicRoute } from './handlers/music';
 
 const token = process.env.TOKEN;

@@ -1,12 +1,20 @@
-//? ytdl-core hasn't been updated in a year, so I had to change the library. 
-//? I also had to borrow some functions from there as well.
-
-//#region url-utils.js
 /*
     MIT License
+
+    Copyright (C) 2012-present by fent
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+    -----------------------------------------------------------------------------------------------------
     Slightly modified version of this file
     https://github.com/fent/node-ytdl-core/blob/9e15c7381f1eba188aba8b536097264db6ad3f7e/lib/url-utils.js
-    Copyright (C) 2012-present by fent
 */
 
 const validQueryDomains = new Set([
@@ -56,4 +64,3 @@ export function validateURL(string: string) {
         return false;
     }
 }
-//#endregion

@@ -1,6 +1,6 @@
 import { InlineKeyboard, InputMediaBuilder } from 'grammy';
 import { getLinks } from '../external/odesly/api';
-import { createRoute, queryFilter } from '../utils/routeing';
+import { createRoute, queryFilter } from '../utils/routing';
 import { isCached } from '../utils/ytmedia';
 import { logger } from '../utils/logger';
 

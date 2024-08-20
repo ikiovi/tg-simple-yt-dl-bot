@@ -7,6 +7,8 @@ export type YoutubeMediaInfo = {
     sourceUrl: string
     ownerChannelName: string
     duration: number
+    originDuration: number
+    range?: { start?: number, end?: number }
     category?: string
     thumbnail?: string
     audioFormat: VideoFormat

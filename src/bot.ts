@@ -3,7 +3,7 @@ import { Bot } from 'grammy';
 import { logger } from './utils/logger';
 import { MyContext } from './types/context';
 import { ytRoute } from './handlers/yt';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, rmSync } from 'fs';
 import { RunOptions, run, sequentialize } from '@grammyjs/runner';
 import { YTDownloadHelper } from './services/ytdlHelper';
 import { createRoutingSet } from './utils/routing';
@@ -23,6 +23,11 @@ logger.debug('Started!');
 
 if (!existsSync(process.env.TEMP_DIR)) {
     logger.info(`${process.env.TEMP_DIR} does not exist. Creating...`);
+    mkdirSync(process.env.TEMP_DIR);
+}
+else if (process.env.TEMP_DIR_CLEANUP === 'true') {
+    logger.info(`Cleaning up ${process.env.TEMP_DIR}`);
+    rmSync(process.env.TEMP_DIR, { recursive: true });
     mkdirSync(process.env.TEMP_DIR);
 }
 

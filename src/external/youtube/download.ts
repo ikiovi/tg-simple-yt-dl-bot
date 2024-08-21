@@ -11,7 +11,7 @@ export async function download(url: string, contentLength: number, options?: Dow
             methods: ['get'],
             statusCodes: [403, 408, 500, 502, 503, 504],
         },
-        timeout: 10000,
+        timeout: 15000,
         redirect: 'follow',
         headers: options?.headers
     };
@@ -27,7 +27,7 @@ export async function download(url: string, contentLength: number, options?: Dow
                 return err;
             });
         if (!req?.ok || !req?.body) return;
-        const body = Readable.fromWeb(req.body);
+        const body = Readable.fromWeb(req.body).on('error', err => { stream.destroy(err); });
         body.pipe(stream, { end: !end });
         body.once('end', () => {
             if (stream.destroyed || !end) return;

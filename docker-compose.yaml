@@ -11,3 +11,4 @@ services:
         environment:
             - LOG_LEVEL=warn
             - DISABLE_LOG_TIMESTAMP=false
+            - TEMP_DIR_CLEANUP=true

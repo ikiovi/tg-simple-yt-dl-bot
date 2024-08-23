@@ -17,18 +17,15 @@ export async function getLinks(song: string): Promise<MusicEntity | undefined> {
     if (!response.ok) return;
     const { linksByPlatform, entitiesByUniqueId } = await response.json<OdeslyEntity>() ?? {};
     if (!linksByPlatform || !entitiesByUniqueId) return;
-    const info: Omit<MusicEntity, 'linksByPlatform'> = {};
+    const result: MusicEntity = { linksByPlatform };
 
     for (const entity of Object.values(entitiesByUniqueId)) {
-        if (entity.type === 'album') return;
-        if (info.title && info.artist && info.cover) break;
-        info.title ??= entity.title;
-        info.artist ??= entity.artistName;
-        info.cover ??= entity.thumbnailUrl;
+        if (entity.type == 'album') return;
+        if (result.title && result.artist && result.cover) break;
+        result.title ??= entity.title;
+        result.artist ??= entity.artistName;
+        result.cover ??= entity.thumbnailUrl;
     }
 
-    return {
-        ...info,
-        linksByPlatform
-    };
+    return result;
 }

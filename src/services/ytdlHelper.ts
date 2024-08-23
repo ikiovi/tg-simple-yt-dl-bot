@@ -11,6 +11,7 @@ import { logger } from '../utils/logger';
 import TTLCache from '@isaacs/ttlcache';
 import { Message } from 'grammy/types';
 import EventEmitter from 'events';
+import { MusicEntity } from '../external/odesly/types';
 
 //? It's service because it modifies context
 //? Could be middleware but it is also responsible for cache, so let it be service
@@ -28,42 +29,44 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         return (ctx, next) => {
             ctx.ytdl = {
                 get: (...args) => this.get(ctx, ...args),
-                getMusic: (audio, options) => this.get(ctx, audio, { ...options, creator: options?.artist }),
-                initPlaceholders: c => this.initPlaceholders(ctx, c)
+                initPlaceholders: c => this.initPlaceholders(ctx, c),
+                getMusic: (...args) => this.getMusic(ctx, ...args)
             };
             return next();
         };
     }
 
-    private async get(ctx: MyContext, video: string, options?: Partial<VideoOptions>): Promise<YoutubeVideo> {
+    private async get(ctx: MyContext, video: string, videoOptions?: Partial<VideoOptions>, constructOptions?: Partial<MediaConstructorOptions>): Promise<YoutubeVideo> {
+        const { overrideType, hashFunction } = constructOptions ?? {};
         const id = getVideoID(video);
-        const uid = id + '#' + hashObject(options);
+        const uid = id + '#' + (hashFunction ?? hashObject)(videoOptions);
         const media = this.cache.get(uid);
         const chat_id = ctx.from!.id;
 
         if (media) return media;
 
-        const info = await getYoutubeVideoInfo(id, options);
+        const { title, creator, thumbnail } = videoOptions ?? {};
+        const info = await getYoutubeVideoInfo(id, videoOptions);
         const emitter = new EventEmitter();
         const newMedia: YoutubeMedia = {
             ...info,
             uid: uid,
             emitter,
             isCached: 0,
-            title: options?.title ?? info.title,
-            ownerChannelName: options?.creator ?? info.ownerChannelName,
-            thumbnail: options?.thumbnail ?? info.thumbnail,
+            title: title ?? info.title,
+            ownerChannelName: creator ?? info.ownerChannelName,
+            thumbnail: thumbnail ?? info.thumbnail,
             isExceeds: !info.simpleFormat && !info.videoFormat,
             progress: {
-                success: (t, c) => emitter.once(`${t}:${events.success}`, c),
-                finished: (t, c) => emitter.once(`${t}:${events.finish}`, c),
-                error: (t, c) => emitter.once(`${t}:${events.error}`, c),
+                success: (t, c) => emitter.once(`${overrideType ?? t}:${events.success}`, c),
+                finished: (t, c) => emitter.once(`${overrideType ?? t}:${events.finish}`, c),
+                error: (t, c) => emitter.once(`${overrideType ?? t}:${events.error}`, c),
                 on: c => emitter.on(`video:${events.progress}`, c),
                 once: c => emitter.once(`video:${events.progress}`, c)
             },
-            getCached: (t, a) => this.cacheAndGet(ctx, uid, t, a),
-            downloadOrCached: async t => await this.getCached(uid, t) ?? this.download(uid, t),
-            replyWith: (t, o, c) => this.send(ctx, uid, c ?? chat_id, { type: t ?? 'video', ...o }),
+            getCached: (t, a) => this.cacheAndGet(ctx, uid, overrideType ?? t, a),
+            downloadOrCached: async t => await this.getCached(uid, overrideType ?? t) ?? this.download(uid, overrideType ?? t),
+            replyWith: (t, o, c) => this.send(ctx, uid, c ?? chat_id, { type: overrideType ?? t ?? 'video', ...o }),
         };
         this.cache.set(uid, newMedia);
 
@@ -80,6 +83,17 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
         });
 
         return newMedia;
+    }
+
+    private getMusic(ctx: MyContext, audio: string, options?: Omit<MusicEntity, 'linksByPlatform'>) {
+        return this.get(ctx, audio, {
+            title: options?.title,
+            creator: options?.artist,
+            thumbnail: options?.cover
+        }, {
+            overrideType: 'audio',
+            hashFunction: () => 'music'
+        });
     }
 
     private async download(id: string, type: SMU = 'video'): Promise<InputFile> {
@@ -176,7 +190,6 @@ export class YTDownloadHelper implements MiddlewareObj<MyContext> {
     }
 }
 
-type MaybePromise<T> = T | Promise<T>;
 async function sendToTelegram<T extends SMU = SMU>(ctx: MyContext, chat_id: number, file: MaybePromise<InputFile | string>, options: UploadFileOptions<T>) {
     const method = uploadMethod[options.type];
     const message: Message = await ctx.api[method](chat_id, await file, {
@@ -186,3 +199,6 @@ async function sendToTelegram<T extends SMU = SMU>(ctx: MyContext, chat_id: numb
     if (options.temp_upload) await ctx.api.deleteMessage(chat_id, message.message_id);
     return message;
 }
+
+type MediaConstructorOptions = { overrideType: SMU, hashFunction: typeof hashObject }
+type MaybePromise<T> = T | Promise<T>;

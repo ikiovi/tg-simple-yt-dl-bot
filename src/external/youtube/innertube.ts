@@ -32,18 +32,19 @@ export async function getBasicInfo(id: string, client?: InnerTubeClient) {
 function parseInnertubeFormat(f: ReturnType<typeof FormatUtils.chooseFormat>, player?: Player): VideoFormat {
     const regex = /video\/(?<container>[^;]+);\s*codecs="(?<codecs>[^"]+)"/;
     const { container, codecs } = regex.exec(f.mime_type)?.groups ?? {};
+    const quality = (f.has_video ? f.quality : f.audio_quality)!;
     return {
         codecs,
+        quality,
         container,
         itag: f.itag,
-        quality: f.quality!,
         hasVideo: f.has_video,
         hasAudio: f.has_audio,
         url: f.decipher(player),
         contentLength: f.content_length!,
         isFull: f.has_audio && f.has_video,
         aspectRatio: calculateAspectRatio(f.width!, f.height!),
-        isHQ: !['tiny', 'small', 'medium'].includes(f.quality!.toString()),
+        isHQ: !['tiny', 'small', 'medium', 'AUDIO_QUALITY_LOW'].includes(quality!.toString()),
         getReadable(onError) {
             return download(this.url, this.contentLength, {
                 headers: Constants.STREAM_HEADERS,

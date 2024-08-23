@@ -8,7 +8,7 @@ export type MyContext = Context & YtdlHelperFlavor
 interface YtdlHelperFlavor {
     ytdl: {
         get: (video: string, options?: Partial<VideoOptions>) => Promise<YoutubeVideo>
-        getMusic: (audio: string, options?: Omit<MusicEntity, 'linksByPlatform'>) => Promise<YoutubeVideo>
+        getMusic: (audio: string, options?: Omit<MusicEntity, 'linksByPlatform'>) => Promise<Omit<YoutubeVideo, 'progress'>>
         initPlaceholders: (chat_id: number) => Promise<void>
     }
 }

@@ -41,9 +41,10 @@ async function getYoutubeVideoInfo(id: string, options?: Partial<VideoOptions>):
     }
 
     formats.sort((f1, f2) => isHasGreaterQuality(f1, f2) ? -1 : 1);
+    audioFormats.reverse();
 
     const simpleFormat = formats?.find(f => f.hasAudio);
-    const hqAudioFormat = audioFormats[0];
+    const hqAudioFormat = audioFormats.find(f => f.isHQ) ?? audioFormats[0];
     const thumbnail = formats[0].aspectRatio < 1 ?
         `https://i.ytimg.com/vi/${id}/frame0.jpg` :
         videoDetails?.thumbnail?.[0].url;

@@ -18,7 +18,7 @@ async function getYoutubeVideoInfo(id: string, options?: Partial<VideoOptions>):
 
     if (!videoDetails || !videoDetails.id) throw new Error('Invalid video info');
     if (videoDetails.isLive) throw new Error('Unable to download livestream');
-    if (!playabilityStatus?.playable) throw new Error(`${playabilityStatus?.status}: ${playabilityStatus?.reason}`);
+    if (!playabilityStatus?.playable) throw new Error(`Status: ${playabilityStatus?.status}\n${playabilityStatus?.reason}`);
 
     if (range?.start && (range.start <= 0 || range.start >= videoDetails.duration)) range.start = undefined;
     if (range?.end && range.end >= videoDetails.duration) range.end = undefined;

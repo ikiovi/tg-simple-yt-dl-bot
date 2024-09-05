@@ -4,8 +4,11 @@ import { createRoute, queryFilter } from '../utils/routing';
 import { isCached } from '../utils/ytmedia';
 import { logger } from '../utils/logger';
 
-const allowedServices = new Set([
-    'open.spotify.com'
+const allowedHosts = new Set([
+    'open.spotify.com',
+    'music.youtube.com',
+    'music.yandex.ru',
+    'soundcloud.com'
 ]);
 
 export const musicRoute = createRoute(queryFilter(
@@ -13,7 +16,7 @@ export const musicRoute = createRoute(queryFilter(
         const q = query.trim();
         if (!URL.canParse(q)) return false;
         const { hostname } = new URL(q);
-        return allowedServices.has(hostname);
+        return allowedHosts.has(hostname);
     }
 ));
 const { handler } = musicRoute;
@@ -24,15 +27,18 @@ handler.on(':text', async ctx => {
     const ytUrl = (audio?.linksByPlatform.youtube ?? audio?.linksByPlatform.youtubeMusic)?.url;
     if (!ytUrl) return ctx.reply('Looks like this track is not available on YouTube');
     const media = await ctx.ytdl.getMusic(ytUrl, audio);
-    await media.replyWith('audio', undefined, ctx.chat.id);
+    await media.replyWith('audio', {
+        parse_mode: 'HTML',
+        caption: getCaption(media.videoId, ctx.msg.text)
+    }, ctx.chat.id);
 });
 
 handler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
     const audio = await getLinks(query);
-    if (!audio) return ctx.answerInlineQuery([]);
+    if (!audio) throw new Error('Failed to get track info');
     const ytUrl = (audio?.linksByPlatform.youtube ?? audio?.linksByPlatform.youtubeMusic)?.url;
-    if (!ytUrl) return ctx.answerInlineQuery([]);
+    if (!ytUrl) throw new Error('Looks like this track is not available on YouTube');
     const media = await ctx.ytdl.getMusic(ytUrl, audio);
     const cached = isCached('audio', media);
 
@@ -45,8 +51,7 @@ handler.on('inline_query', async ctx => {
         audio_file_id: await media.getCached('audio', true),
         reply_markup: cached ? undefined : new InlineKeyboard().text('Loading...'),
         parse_mode: 'HTML',
-        caption: htmlLink('https://song.link/y/' + media.videoId, 'song.link') + ' | ' +
-            htmlLink(audio.linksByPlatform.spotify.url, 'spotify')
+        caption: getCaption(media.videoId, query)
     }], { cache_time: 0 });
 });
 
@@ -56,7 +61,6 @@ handler.chosenInlineResult(/_ax$/, async ctx => {
 
     const videoId = result_id.slice(0, -3);
     const media = await ctx.ytdl.getMusic(videoId);
-    const spotifyUrl = new URL(query);
 
     const file_id = await media.getCached();
     await ctx.api.editMessageMediaInline(
@@ -65,12 +69,16 @@ handler.chosenInlineResult(/_ax$/, async ctx => {
             title: media.title,
             performer: media.ownerChannelName,
             parse_mode: 'HTML',
-            caption: htmlLink('https://song.link/y/' + videoId, 'song.link') + ' | ' +
-                htmlLink(spotifyUrl.origin + spotifyUrl.pathname, 'spotify')
+            caption: getCaption(videoId, query)
         })
     );
 });
 
 function htmlLink(url: string, text: string) {
     return `<a href="${url}">${text}</a>`;
+}
+
+function getCaption(videoId: string, query: string) {
+    return htmlLink('https://song.link/y/' + videoId, 'song.link') + ' | ' +
+        htmlLink(query, 'from');
 }

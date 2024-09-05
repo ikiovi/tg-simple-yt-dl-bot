@@ -32,8 +32,6 @@ handler.on(':text', async ctx => {
     return video.replyWith('video', undefined, ctx.chat.id);
 });
 
-//TODO: ytHandler.errorBoundary(...) (403: Forbidden: bot was blocked by the user) + handle age restricted / private video
-
 handler.on('inline_query', async ctx => {
     const { query, from } = ctx.inlineQuery;
     const range = getTimeRange(query);

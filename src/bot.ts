@@ -35,10 +35,27 @@ bot.command('ping', ctx => ctx.reply('pong')); // To check if bot is alive ¯\_(
 bot.use(sequentialize(ctx => ctx.from?.id.toString()));
 bot.use(ytHelper);
 
-const { router, handlers } = createRoutingSet(ytRoute, musicRoute);
-bot.route(router, handlers);
+const { router, handlers } = createRoutingSet(musicRoute, ytRoute);
+bot.errorBoundary(err => {
+    const { ctx, error } = err;
+    const { inlineQuery, msg } = err.ctx;
+    const { name, message } = <Error>error ?? { name: 'Error', message: 'Unknown' };
+    if (msg && ctx.from?.id) ctx.api.sendMessage(ctx.from.id, message);
+    if (inlineQuery) ctx.answerInlineQuery([{
+        type: 'article',
+        id: 'error',
+        title: name,
+        description: message,
+        input_message_content: {
+            message_text: message
+        }
+    }], { cache_time: 0 });
 
-bot.catch(err => logger.error(err.error));
+    throw err.error;
+
+}).route(router, handlers);
+
+bot.catch(err => logger.error(err.error)); //TODO: (403: Forbidden: bot was blocked by the user)
 
 const fetch = { allowed_updates: ['inline_query', 'message', 'callback_query', 'chosen_inline_result'] };
 const options = { runner: { fetch }, sink: {}, source: {} } as RunOptions<unknown>;
